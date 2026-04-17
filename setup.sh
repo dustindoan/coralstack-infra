@@ -8,6 +8,13 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$REPO_ROOT"
 
+# ─── Pinned upstream versions ────────────────────────────────────────────────
+# Bumping Immich is a two-step: change IMMICH_VERSION here, re-run setup.sh.
+# It refetches the upstream compose and writes the matching version into
+# services/immich/.env.
+IMMICH_VERSION=v2.7.5
+JELLYFIN_SSO_VERSION=4.0.0.4
+
 log()  { printf '\033[1;36m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m!!\033[0m  %s\n' "$*" >&2; }
 die()  { printf '\033[1;31mxx\033[0m  %s\n' "$*" >&2; exit 1; }
@@ -30,9 +37,18 @@ set -a; source .env; set +a
 
 : "${BASE_DOMAIN:?BASE_DOMAIN is not set in .env}"
 : "${STORAGE_PATH:?STORAGE_PATH is not set in .env}"
-: "${ACME_EMAIL:?ACME_EMAIL is not set in .env — required for Let's Encrypt}"
-: "${CF_API_TOKEN:?CF_API_TOKEN is not set in .env — required for Cloudflare DNS-01 ACME}"
+: "${ACME_EMAIL:?ACME_EMAIL is not set in .env (required for Lets Encrypt)}"
+: "${CF_API_TOKEN:?CF_API_TOKEN is not set in .env (required for Cloudflare DNS-01 ACME)}"
 : "${DATA_PATH:=./data}"
+
+# Absolute version of DATA_PATH — Immich's compose bind-mounts are relative
+# to the included compose file's directory, so we need absolute paths for
+# the vars we inject into services/immich/.env.
+if [[ "$DATA_PATH" = /* ]]; then
+	ABS_DATA_PATH="$DATA_PATH"
+else
+	ABS_DATA_PATH="$REPO_ROOT/${DATA_PATH#./}"
+fi
 
 [[ -d "$STORAGE_PATH" ]] || warn "STORAGE_PATH ($STORAGE_PATH) doesn't exist yet — create it before starting services that need it."
 
@@ -73,6 +89,20 @@ fill_secret() {
 	fi
 }
 
+# Unconditionally set KEY=value in a file (used for paths derived from root
+# .env, which should always stay in sync). Creates the line if missing.
+set_value() {
+	local file="$1" key="$2" value="$3"
+	if grep -qE "^${key}=" "$file"; then
+		awk -v k="$key" -v v="$value" '
+			$0 ~ "^" k "=" { print k "=" v; next }
+			{ print }
+		' "$file" > "$file.tmp" && mv "$file.tmp" "$file"
+	else
+		echo "${key}=${value}" >> "$file"
+	fi
+}
+
 gen_hex()    { openssl rand -hex 32; }
 gen_base64() { openssl rand -base64 48 | tr -d '\n'; }
 
@@ -80,20 +110,35 @@ init_service_env pocket-id
 init_service_env vaultwarden
 init_service_env immich
 
-fill_secret services/pocket-id/.env   ENCRYPTION_KEY        "$(gen_hex)"
-fill_secret services/vaultwarden/.env ADMIN_TOKEN           "$(gen_base64)"
+fill_secret services/pocket-id/.env   ENCRYPTION_KEY   "$(gen_hex)"
+fill_secret services/vaultwarden/.env ADMIN_TOKEN      "$(gen_base64)"
 
-# Immich: DB_PASSWORD (read by immich-server) and POSTGRES_PASSWORD (read by
-# the postgres container) must match. Generate once, fill both.
-immich_db_pw="$(gen_hex)"
-fill_secret services/immich/.env      DB_PASSWORD           "$immich_db_pw"
-fill_secret services/immich/.env      POSTGRES_PASSWORD     "$immich_db_pw"
+# Immich: only DB_PASSWORD is needed — upstream's postgres service reads it
+# directly from the shared .env. Paths are derived from root config so they
+# track DATA_PATH/STORAGE_PATH edits.
+fill_secret services/immich/.env      DB_PASSWORD      "$(gen_hex)"
+set_value   services/immich/.env      IMMICH_VERSION   "$IMMICH_VERSION"
+set_value   services/immich/.env      UPLOAD_LOCATION  "$STORAGE_PATH/photos"
+set_value   services/immich/.env      DB_DATA_LOCATION "$ABS_DATA_PATH/immich/postgres"
+
+# ─── Immich upstream compose ─────────────────────────────────────────────────
+# Fetch the pinned release's docker-compose.yml so our overlay can include it
+# verbatim. This gives us automatic version alignment (postgres, Valkey, ML,
+# server) without hand-copying upstream's pins.
+immich_upstream=services/immich/upstream.yml
+if [[ ! -f "$immich_upstream" ]]; then
+	log "Fetching Immich $IMMICH_VERSION upstream compose"
+	command -v curl >/dev/null || die "curl not found (needed to fetch Immich upstream compose)."
+	curl -fsSL \
+		"https://github.com/immich-app/immich/releases/download/$IMMICH_VERSION/docker-compose.yml" \
+		-o "$immich_upstream"
+	log "Fetched $immich_upstream — delete it to re-fetch on next run (e.g. after bumping IMMICH_VERSION)."
+fi
 
 # ─── Jellyfin SSO plugin (pre-seed) ──────────────────────────────────────────
 # Drop the SSO plugin into the Jellyfin config volume so it's loaded on first
 # boot. No admin-UI install required. Skip if already present or if Jellyfin
 # is commented out of the top-level compose.
-JELLYFIN_SSO_VERSION=4.0.0.4
 jellyfin_plugin_dir="$DATA_PATH/jellyfin/config/plugins/SSO-Auth_${JELLYFIN_SSO_VERSION}"
 
 if grep -qE '^\s*-\s*services/jellyfin/' docker-compose.yml && [[ ! -d "$jellyfin_plugin_dir" ]]; then
@@ -122,11 +167,10 @@ echo
 cat <<EOF
 Next steps:
 
-  1. Trust the Caddy internal CA on each client device, OR switch to
-     Let's Encrypt by setting ACME_EMAIL in .env and removing \`tls internal\`
-     lines from caddy/Caddyfile.
+  1. Watch Caddy obtain certs: docker compose logs -f caddy
+     (First boot takes 30-60s for DNS-01 challenges + LE issuance.)
 
   2. Open https://id.${BASE_DOMAIN} and create the first Pocket ID admin user.
 
-  3. Wire OIDC into Immich and Jellyfin — see docs/ONBOARDING.md.
+  3. Wire OIDC into Immich and Jellyfin - see docs/ONBOARDING.md.
 EOF

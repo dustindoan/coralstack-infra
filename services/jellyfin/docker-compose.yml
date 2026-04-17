@@ -14,10 +14,3 @@ services:
       # Optional: movies, TV — uncomment if you use them
       # - ${STORAGE_PATH}/movies:/media/movies:ro
       # - ${STORAGE_PATH}/tv:/media/tv:ro
-    networks:
-      - coralstack
-
-networks:
-  coralstack:
-    name: coralstack
-    external: true

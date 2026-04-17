@@ -1,67 +1,13 @@
-# Immich stack — derived from upstream https://github.com/immich-app/immich.
-# If you already have Immich running on this host with its own compose, stop
-# it and migrate the upload/database volumes into ${DATA_PATH}/immich and
-# ${STORAGE_PATH}/photos before bringing this up. See docs/QUICKSTART.md.
+# Thin overlay on Immich's upstream compose.
 #
-# All Immich config (DB creds, upload path, etc.) lives in services/immich/.env
-# — setup.sh generates it. This compose file doesn't interpolate any secrets,
-# so `docker compose config` works even before setup has run.
+# The upstream file is fetched by setup.sh from the pinned release URL and
+# dropped at services/immich/upstream.yml. We inherit it verbatim — same
+# postgres tag, same Valkey tag, same ML/server versions that Immich itself
+# ships. Upgrading is a single version bump in setup.sh.
+#
+# No service overrides needed: the root docker-compose.yml maps the project's
+# default network to `coralstack`, so all upstream services automatically
+# land on the same network as Caddy.
 
-services:
-  immich-server:
-    image: ghcr.io/immich-app/immich-server:v2.7.5
-    container_name: immich-server
-    restart: unless-stopped
-    env_file:
-      - path: .env
-        required: false
-    environment:
-      TZ: ${TZ}
-    volumes:
-      - ${STORAGE_PATH}/photos:/usr/src/app/upload
-      - /etc/localtime:/etc/localtime:ro
-    depends_on:
-      - immich-redis
-      - immich-postgres
-    networks:
-      - coralstack
-
-  immich-machine-learning:
-    image: ghcr.io/immich-app/immich-machine-learning:v2.7.5
-    container_name: immich-machine-learning
-    restart: unless-stopped
-    env_file:
-      - path: .env
-        required: false
-    volumes:
-      - ${DATA_PATH:-../../data}/immich/model-cache:/cache
-    networks:
-      - coralstack
-
-  immich-redis:
-    image: docker.io/redis:6.2.21-alpine3.21
-    container_name: immich-redis
-    restart: unless-stopped
-    healthcheck:
-      test: redis-cli ping || exit 1
-    networks:
-      - coralstack
-
-  immich-postgres:
-    # Migrating from an older VectorChord tag (e.g. 0.2.0) requires a reindex
-    # — see https://github.com/immich-app/immich/releases for upgrade notes.
-    image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvector0.8.0-pgvectors0.3.0
-    container_name: immich-postgres
-    restart: unless-stopped
-    env_file:
-      - path: .env
-        required: false
-    volumes:
-      - ${DATA_PATH:-../../data}/immich/postgres:/var/lib/postgresql/data
-    networks:
-      - coralstack
-
-networks:
-  coralstack:
-    name: coralstack
-    external: true
+include:
+  - path: upstream.yml

@@ -8,10 +8,13 @@ include:
   - services/immich/docker-compose.yml
   - services/jellyfin/docker-compose.yml
 
+# The project's default network is named `coralstack`. Every service in this
+# compose (and every included compose) lands on it automatically, so Caddy
+# can reach upstream services by container name without per-service network
+# declarations. Lets us include third-party compose files verbatim.
 networks:
-  coralstack:
+  default:
     name: coralstack
-    driver: bridge
 
 services:
   caddy:
@@ -30,5 +33,3 @@ services:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - ${DATA_PATH:-./data}/caddy/data:/data
       - ${DATA_PATH:-./data}/caddy/config:/config
-    networks:
-      - coralstack

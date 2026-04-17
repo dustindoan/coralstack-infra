@@ -1,5 +1,6 @@
 .env
 services/*/.env
+services/immich/upstream.yml
 data/
 *.log
 .DS_Store

@@ -57,10 +57,15 @@ sudo chown -R $USER:$USER /mnt/storage
 
 If you're migrating from existing services, move the data into place now:
 
-- **Immich:** the upload directory (usually `UPLOAD_LOCATION` in the old compose)
-  becomes `${STORAGE_PATH}/photos`. The Postgres volume moves to
-  `${DATA_PATH}/immich/postgres`. Stop the old compose, `rsync -a` the data,
-  then continue.
+- **Immich:** easiest — our compose includes Immich's upstream `docker-compose.yml`
+  verbatim, so if you're already on a recent Immich release you can keep the
+  existing data in place. Stop your old compose (`cd /path/to/old/immich && docker compose down`),
+  then `cp /path/to/old/immich/.env services/immich/.env`. Set `IMMICH_VERSION`
+  in that file to match the `IMMICH_VERSION` constant at the top of `setup.sh`
+  (bump `setup.sh` up if needed). Your `UPLOAD_LOCATION` and `DB_DATA_LOCATION`
+  can stay pointing at their current absolute paths — our compose reads them
+  verbatim from your copied `.env`. setup.sh won't overwrite an existing
+  `services/immich/.env`, so nothing gets regenerated.
 - **Navidrome → Jellyfin:** the library directory is unchanged — both read
   from `${STORAGE_PATH}/music`. Jellyfin will rescan on first boot.
 - **Vaultwarden:** in alpha, assume a fresh start. If you want to preserve
@@ -115,5 +120,8 @@ matching config in Immich / Jellyfin.
 - **`docker compose up` can't find the network:** the `coralstack` network is
   defined in the root compose. Always run `docker compose` commands from the
   repo root, not from a service directory.
-- **Immich postgres fails to start after migration:** version mismatch. Check
-  the postgres image tag matches what your old data was created with.
+- **Immich postgres fails to start after migration:** version mismatch between
+  the upstream compose we fetched and your existing data. Check
+  `services/immich/upstream.yml` postgres tag against what your old compose
+  used; if they differ, either adjust `IMMICH_VERSION` in `setup.sh` to match
+  your data's era, or follow Immich's upgrade path to migrate the DB forward.

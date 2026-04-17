@@ -13,10 +13,3 @@ services:
       # at data/pocket-id.db (see services/pocket-id/.env for override).
     volumes:
       - ${DATA_PATH:-../../data}/pocket-id:/app/data
-    networks:
-      - coralstack
-
-networks:
-  coralstack:
-    name: coralstack
-    external: true

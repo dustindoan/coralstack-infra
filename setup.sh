@@ -116,10 +116,13 @@ fill_secret services/vaultwarden/.env ADMIN_TOKEN      "$(gen_base64)"
 # Immich: only DB_PASSWORD is needed — upstream's postgres service reads it
 # directly from the shared .env. Paths are derived from root config so they
 # track DATA_PATH/STORAGE_PATH edits.
+# All fill-if-blank so migrating from an existing Immich install is just:
+#   cp /path/to/old/immich/.env services/immich/.env
+# setup.sh then fills whatever's still blank without touching existing values.
 fill_secret services/immich/.env      DB_PASSWORD      "$(gen_hex)"
-set_value   services/immich/.env      IMMICH_VERSION   "$IMMICH_VERSION"
-set_value   services/immich/.env      UPLOAD_LOCATION  "$STORAGE_PATH/photos"
-set_value   services/immich/.env      DB_DATA_LOCATION "$ABS_DATA_PATH/immich/postgres"
+fill_secret services/immich/.env      IMMICH_VERSION   "$IMMICH_VERSION"
+fill_secret services/immich/.env      UPLOAD_LOCATION  "$STORAGE_PATH/photos"
+fill_secret services/immich/.env      DB_DATA_LOCATION "$ABS_DATA_PATH/immich/postgres"
 
 # ─── Immich upstream compose ─────────────────────────────────────────────────
 # Fetch the pinned release's docker-compose.yml so our overlay can include it

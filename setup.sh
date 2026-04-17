@@ -12,7 +12,7 @@ cd "$REPO_ROOT"
 # Bumping Immich is a two-step: change IMMICH_VERSION here, re-run setup.sh.
 # It refetches the upstream compose and writes the matching version into
 # services/immich/.env.
-IMMICH_VERSION=v2.7.5
+IMMICH_VERSION=v2.7.4
 JELLYFIN_SSO_VERSION=4.0.0.4
 
 log()  { printf '\033[1;36m==>\033[0m %s\n' "$*"; }

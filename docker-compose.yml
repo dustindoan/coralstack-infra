@@ -1,0 +1,33 @@
+name: coralstack
+
+# Comment out any service you don't want to run. Caddy is required; it's the
+# TLS boundary and subdomain router for everything else.
+include:
+  - services/pocket-id/docker-compose.yml
+  - services/vaultwarden/docker-compose.yml
+  - services/immich/docker-compose.yml
+  - services/jellyfin/docker-compose.yml
+
+networks:
+  coralstack:
+    name: coralstack
+    driver: bridge
+
+services:
+  caddy:
+    image: caddy:2.11.2-alpine
+    container_name: caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"  # HTTP/3
+    environment:
+      BASE_DOMAIN: ${BASE_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${DATA_PATH:-./data}/caddy/data:/data
+      - ${DATA_PATH:-./data}/caddy/config:/config
+    networks:
+      - coralstack

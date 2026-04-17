@@ -1,0 +1,6 @@
+.env
+services/*/.env
+data/
+*.log
+.DS_Store
+.claude/

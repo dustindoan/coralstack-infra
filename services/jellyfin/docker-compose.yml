@@ -1,0 +1,23 @@
+services:
+  jellyfin:
+    image: jellyfin/jellyfin:10.11.8
+    container_name: jellyfin
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ}
+      JELLYFIN_PublishedServerUrl: https://media.${BASE_DOMAIN}
+    volumes:
+      - ${DATA_PATH:-../../data}/jellyfin/config:/config
+      - ${DATA_PATH:-../../data}/jellyfin/cache:/cache
+      # beets manages the music library on the host; Jellyfin reads it read-only
+      - ${STORAGE_PATH}/music:/media/music:ro
+      # Optional: movies, TV — uncomment if you use them
+      # - ${STORAGE_PATH}/movies:/media/movies:ro
+      # - ${STORAGE_PATH}/tv:/media/tv:ro
+    networks:
+      - coralstack
+
+networks:
+  coralstack:
+    name: coralstack
+    external: true

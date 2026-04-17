@@ -1,0 +1,22 @@
+services:
+  pocket-id:
+    image: ghcr.io/pocket-id/pocket-id:v2.5.0
+    container_name: pocket-id
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      APP_URL: https://id.${BASE_DOMAIN}
+      TRUST_PROXY: "true"
+      # DB provider is inferred from DB_CONNECTION_STRING. Omitted = SQLite
+      # at data/pocket-id.db (see services/pocket-id/.env for override).
+    volumes:
+      - ${DATA_PATH:-../../data}/pocket-id:/app/data
+    networks:
+      - coralstack
+
+networks:
+  coralstack:
+    name: coralstack
+    external: true

@@ -1,47 +1,35 @@
 {
-	# Default to Caddy's internal CA. When you point real DNS at the box and
-	# want real certs, set ACME_EMAIL in .env and the directive below kicks in.
 	email {$ACME_EMAIL}
+
+	# All sites get real Let's Encrypt certs via Cloudflare DNS-01.
+	# No public exposure needed — Cloudflare creates _acme-challenge TXT
+	# records and LE validates via DNS, not by hitting this box.
+	acme_dns cloudflare {env.CF_API_TOKEN}
 }
 
-# ─── Landing page for the community ──────────────────────────────────────────
+# ─── Landing page ────────────────────────────────────────────────────────────
 {$BASE_DOMAIN} {
-	tls internal
 	respond "CoralStack — you're connected. Services: id, vault, photos, media." 200
 }
 
 # ─── Pocket ID (identity) ────────────────────────────────────────────────────
 id.{$BASE_DOMAIN} {
-	tls internal
 	reverse_proxy pocket-id:1411
 }
 
 # ─── Vaultwarden ─────────────────────────────────────────────────────────────
 vault.{$BASE_DOMAIN} {
-	tls internal
-
-	# Vaultwarden's WebSocket endpoint for live sync.
 	reverse_proxy /notifications/hub vaultwarden:3012
 	reverse_proxy vaultwarden:80
 }
 
 # ─── Immich ──────────────────────────────────────────────────────────────────
 photos.{$BASE_DOMAIN} {
-	tls internal
 	client_max_body_size 50000M  # large photo/video uploads
 	reverse_proxy immich-server:2283
 }
 
 # ─── Jellyfin ────────────────────────────────────────────────────────────────
 media.{$BASE_DOMAIN} {
-	tls internal
 	reverse_proxy jellyfin:8096
 }
-
-# ─── Public TLS (Let's Encrypt) ──────────────────────────────────────────────
-# When you're ready to expose this to the internet with real certs:
-#   1. Point a wildcard A record at the box: *.campbellriver.coralstack.org → <public IP>
-#   2. Open 80/443 on your router
-#   3. Set ACME_EMAIL in .env
-#   4. Remove the `tls internal` lines above (Caddy will default to Let's Encrypt)
-#   5. Restart Caddy: docker compose restart caddy

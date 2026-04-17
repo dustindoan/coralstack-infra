@@ -8,8 +8,25 @@ you're also migrating existing Immich/Vaultwarden data.
 - A Linux host (Intel NUC or similar). These instructions target Debian/Ubuntu.
 - Docker Engine + Compose v2. Install from [docs.docker.com](https://docs.docker.com/engine/install/).
 - External storage mounted somewhere stable (default: `/mnt/storage`).
-- Tailscale installed and logged in (optional but recommended for the MVP —
-  it's the easiest way to make the box reachable without opening ports).
+- Tailscale installed and logged in. The NUC stays off the public internet;
+  members join your tailnet to reach it.
+- A domain with DNS hosted at **Cloudflare**. The domain can be registered
+  anywhere (Hostinger, Namecheap, etc.) — only the DNS nameservers need to
+  point at Cloudflare. See [DNS setup](#dns-setup) below.
+
+## DNS setup
+
+Caddy obtains real Let's Encrypt certs via the Cloudflare DNS-01 challenge,
+so the NUC never needs to be reachable from the public internet.
+
+1. At **Cloudflare**: add your domain to a free account. It hands you two
+   nameservers. Switch your registrar to use them.
+2. Create a **DNS A record**: `*.<community>.<domain>` → your NUC's tailnet
+   IP (`tailscale ip -4`). Set **Proxy status: DNS only** (grey cloud). The
+   record is public but the IP is only routable over the tailnet.
+3. Create a **scoped API token** at
+   [dash.cloudflare.com/profile/api-tokens](https://dash.cloudflare.com/profile/api-tokens):
+   Permissions `Zone → DNS → Edit`, scoped to this zone. Copy it.
 
 ## 1. Clone and configure
 
@@ -21,18 +38,15 @@ cp .env.example .env
 
 Edit `.env`:
 
-| Variable       | What it is                                     | Example                               |
-| -------------- | ---------------------------------------------- | ------------------------------------- |
-| `COMMUNITY`    | Short slug identifying this deployment         | `campbellriver`                       |
-| `BASE_DOMAIN`  | Root domain; subdomains derived from it        | `campbellriver.coralstack.org`        |
-| `TZ`           | Host timezone                                  | `America/Vancouver`                   |
-| `STORAGE_PATH` | Where photos/music/etc. live on disk           | `/mnt/storage`                        |
-| `DATA_PATH`    | Where container state lives                    | `./data` or `/mnt/storage/coralstack` |
-| `ACME_EMAIL`   | Email for Let's Encrypt (leave blank for now)  | (blank)                               |
-
-For Tailscale-only deployments, point `BASE_DOMAIN` at a name you control via
-MagicDNS (e.g. `nuc.tailXXXX.ts.net`), or just pick any DNS-looking string and
-accept the Caddy-internal cert on each device.
+| Variable        | What it is                                     | Example                               |
+| --------------- | ---------------------------------------------- | ------------------------------------- |
+| `COMMUNITY`     | Short slug identifying this deployment         | `campbellriver`                       |
+| `BASE_DOMAIN`   | Root domain; subdomains derived from it        | `campbellriver.coralstack.org`        |
+| `TZ`            | Host timezone                                  | `America/Vancouver`                   |
+| `STORAGE_PATH`  | Where photos/music/etc. live on disk           | `/mnt/storage`                        |
+| `DATA_PATH`     | Where container state lives                    | `./data` or `/mnt/storage/coralstack` |
+| `ACME_EMAIL`    | Email for Let's Encrypt expiry notifications   | `you@example.com`                     |
+| `CF_API_TOKEN`  | Cloudflare API token from the step above       | `xyz…`                                |
 
 ## 2. Prepare the storage layout
 
@@ -91,9 +105,13 @@ matching config in Immich / Jellyfin.
 
 ## Troubleshooting
 
-- **Caddy cert warnings in the browser:** expected with `tls internal`. Either
-  trust the Caddy root CA on each device (`docker compose exec caddy cat /data/caddy/pki/authorities/local/root.crt`)
-  or switch to Let's Encrypt once DNS is pointed.
+- **Caddy fails to get certs:** check `docker compose logs caddy`. Common
+  causes: token lacks `Zone:DNS:Edit` on the right zone; DNS nameserver
+  switch hasn't propagated yet (`dig NS coralstack.org` should return
+  Cloudflare's nameservers); rate-limited by Let's Encrypt after repeated
+  failures (wait an hour and retry).
+- **Browser can reach Caddy but service gives 502:** the upstream container
+  isn't running. `docker compose ps` and check the service's logs.
 - **`docker compose up` can't find the network:** the `coralstack` network is
   defined in the root compose. Always run `docker compose` commands from the
   repo root, not from a service directory.

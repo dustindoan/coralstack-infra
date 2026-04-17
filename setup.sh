@@ -30,6 +30,8 @@ set -a; source .env; set +a
 
 : "${BASE_DOMAIN:?BASE_DOMAIN is not set in .env}"
 : "${STORAGE_PATH:?STORAGE_PATH is not set in .env}"
+: "${ACME_EMAIL:?ACME_EMAIL is not set in .env — required for Let's Encrypt}"
+: "${CF_API_TOKEN:?CF_API_TOKEN is not set in .env — required for Cloudflare DNS-01 ACME}"
 : "${DATA_PATH:=./data}"
 
 [[ -d "$STORAGE_PATH" ]] || warn "STORAGE_PATH ($STORAGE_PATH) doesn't exist yet — create it before starting services that need it."

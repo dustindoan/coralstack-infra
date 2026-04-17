@@ -15,16 +15,17 @@ networks:
 
 services:
   caddy:
-    image: caddy:2.11.2-alpine
+    build: ./caddy
+    image: coralstack/caddy:2.11.2-cloudflare
     container_name: caddy
     restart: unless-stopped
     ports:
-      - "80:80"
       - "443:443"
       - "443:443/udp"  # HTTP/3
     environment:
       BASE_DOMAIN: ${BASE_DOMAIN}
-      ACME_EMAIL: ${ACME_EMAIL:-}
+      ACME_EMAIL: ${ACME_EMAIL}
+      CF_API_TOKEN: ${CF_API_TOKEN}
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - ${DATA_PATH:-./data}/caddy/data:/data

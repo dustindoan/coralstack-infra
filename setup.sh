@@ -161,10 +161,9 @@ if grep -qE '^\s*-\s*services/jellyfin/' docker-compose.yml && [[ ! -d "$jellyfi
 fi
 
 # ─── Bring it up ─────────────────────────────────────────────────────────────
-log "Pulling images (this may take a while on first run)…"
-docker compose pull
-
-log "Starting the stack"
+# docker compose up handles pull + build transparently: pulls registry images,
+# builds services with a build: directive (like our custom Caddy).
+log "Starting the stack (first run builds custom Caddy image, ~2 min)"
 docker compose up -d
 
 log "Stack is up. Check status with: docker compose ps"

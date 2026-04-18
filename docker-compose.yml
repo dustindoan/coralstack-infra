@@ -20,6 +20,8 @@ services:
   caddy:
     build: ./caddy
     image: coralstack/caddy:2.11.2-cloudflare
+    # Custom-built image — don't try to pull it from a registry.
+    pull_policy: build
     container_name: caddy
     restart: unless-stopped
     ports:

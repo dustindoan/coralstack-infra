@@ -25,7 +25,10 @@ vault.{$BASE_DOMAIN} {
 
 # ─── Immich ──────────────────────────────────────────────────────────────────
 photos.{$BASE_DOMAIN} {
-	client_max_body_size 50000M  # large photo/video uploads
+	# Large photo/video uploads — default Caddy limit would truncate them.
+	request_body {
+		max_size 50GB
+	}
 	reverse_proxy immich-server:2283
 }
 

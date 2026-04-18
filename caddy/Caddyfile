@@ -1,30 +1,44 @@
 {
 	email {$ACME_EMAIL}
+}
 
-	# All sites get real Let's Encrypt certs via Cloudflare DNS-01.
-	# No public exposure needed — Cloudflare creates _acme-challenge TXT
-	# records and LE validates via DNS, not by hitting this box.
-	acme_dns cloudflare {env.CF_API_TOKEN}
+# Shared TLS config: Let's Encrypt via Cloudflare DNS-01. Using Cloudflare's
+# own resolvers (1.1.1.1, 1.0.0.1) for the propagation check — the default
+# resolvers (whatever the container's /etc/resolv.conf points at) can be
+# slow to see freshly-created TXT records, causing the ACME challenge to
+# time out even though the record was successfully published. A longer
+# propagation_timeout is belt-and-suspenders for the same problem.
+(tls_cloudflare) {
+	tls {
+		dns cloudflare {env.CF_API_TOKEN}
+		resolvers 1.1.1.1 1.0.0.1
+		propagation_delay 30s
+		propagation_timeout 5m
+	}
 }
 
 # ─── Landing page ────────────────────────────────────────────────────────────
 {$BASE_DOMAIN} {
+	import tls_cloudflare
 	respond "CoralStack — you're connected. Services: id, vault, photos, media." 200
 }
 
 # ─── Pocket ID (identity) ────────────────────────────────────────────────────
 id.{$BASE_DOMAIN} {
+	import tls_cloudflare
 	reverse_proxy pocket-id:1411
 }
 
 # ─── Vaultwarden ─────────────────────────────────────────────────────────────
 vault.{$BASE_DOMAIN} {
+	import tls_cloudflare
 	reverse_proxy /notifications/hub vaultwarden:3012
 	reverse_proxy vaultwarden:80
 }
 
 # ─── Immich ──────────────────────────────────────────────────────────────────
 photos.{$BASE_DOMAIN} {
+	import tls_cloudflare
 	# Large photo/video uploads — default Caddy limit would truncate them.
 	request_body {
 		max_size 50GB
@@ -34,5 +48,6 @@ photos.{$BASE_DOMAIN} {
 
 # ─── Jellyfin ────────────────────────────────────────────────────────────────
 media.{$BASE_DOMAIN} {
+	import tls_cloudflare
 	reverse_proxy jellyfin:8096
 }

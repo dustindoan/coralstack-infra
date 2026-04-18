@@ -23,6 +23,8 @@ die()  { printf '\033[1;31mxx\033[0m  %s\n' "$*" >&2; exit 1; }
 command -v docker >/dev/null || die "docker not found. Install Docker Engine first."
 docker compose version >/dev/null 2>&1 || die "docker compose v2 not found."
 command -v openssl >/dev/null || die "openssl not found (needed for secret generation)."
+command -v curl >/dev/null    || die "curl not found (needed to fetch Immich upstream compose + Jellyfin plugin)."
+command -v unzip >/dev/null   || die "unzip not found (needed to extract Jellyfin plugin). On Debian/Ubuntu: sudo apt install unzip"
 
 # ─── Root .env ───────────────────────────────────────────────────────────────
 if [[ ! -f .env ]]; then

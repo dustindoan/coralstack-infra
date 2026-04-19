@@ -12,5 +12,9 @@ services:
       INVITATIONS_ALLOWED: "true"
       WEBSOCKET_ENABLED: "true"
       ROCKET_PORT: "80"
+      # SSO authority derived from root BASE_DOMAIN. Vars in env_file don't
+      # get interpolation, so anything referencing ${BASE_DOMAIN} has to live
+      # here in environment: rather than in services/vaultwarden/.env.
+      SSO_AUTHORITY: https://id.${BASE_DOMAIN}
     volumes:
       - ${DATA_PATH:-../../data}/vaultwarden:/data

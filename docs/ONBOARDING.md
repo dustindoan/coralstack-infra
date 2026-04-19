@@ -44,15 +44,10 @@ any manual install. If you don't, restart Jellyfin once
 | Callback URLs        | `https://media.${BASE_DOMAIN}/sso/OID/redirect/pocket-id` |
 | Logout callback URLs | `https://media.${BASE_DOMAIN}`                       |
 
-### Vaultwarden (when SSO graduates from alpha)
+### Vaultwarden — intentionally *not* SSO'd
 
-Vaultwarden's native SSO is experimental. Verify the current upstream docs
-before enabling. Planned client config:
-
-| Field                | Value                                                |
-| -------------------- | ---------------------------------------------------- |
-| Name                 | Vaultwarden                                          |
-| Callback URLs        | `https://vault.${BASE_DOMAIN}/identity/connect/oidc-signin` |
+Vaultwarden stays on master passphrase + device biometric unlock, not OIDC.
+This is a deliberate decision — see [the architecture note](#why-vaultwarden-stays-out-of-sso).
 
 ## 2. Paste the credentials into each service
 
@@ -98,3 +93,39 @@ add a link to it from the Jellyfin login page via the branding settings.
 The one-passkey-per-person story only works if you actually test the passkey
 flow on each device. Budget 15 minutes per new member for hand-holding the
 first time.
+
+## Why Vaultwarden stays out of SSO
+
+Password managers are the one service that shouldn't go through your identity
+provider. Three reasons:
+
+1. **Break-glass recovery.** If Pocket ID ever breaks (corrupted DB, misconfig,
+   lost admin passkey), you need to be able to get into Vaultwarden to retrieve
+   recovery credentials. SSO'ing Vaultwarden through Pocket ID creates a
+   circular dependency — the thing you'd need to recover is behind the thing
+   that's broken.
+2. **Industry pattern.** 1Password, Bitwarden Cloud, and every other serious
+   password manager keeps its own auth for the same reason. We inherit this.
+3. **Mobile apps don't speak OIDC anyway.** Bitwarden's mobile clients use
+   master password + biometric unlock, regardless of what the server supports.
+
+**The revised "one passkey" story** for household members:
+
+- **Vaultwarden:** learn a Diceware master passphrase once. Unlock daily via
+  Touch ID / Face ID on each device. Separate root of trust.
+- **Everything else (Immich, Jellyfin, future services):** one Pocket ID
+  passkey stored in the OS keychain (iCloud Keychain, Windows Hello, hardware
+  key). Single biometric approves any OIDC login.
+
+Two credentials, two failure modes, never lose both at once.
+
+### Where to store the Pocket ID root admin passkey
+
+**Not in Vaultwarden** — that's the circular dependency. Store it in:
+- iCloud Keychain (Safari, auto-syncs to iPhone/iPad)
+- Windows Hello / Google Password Manager (Chrome)
+- A hardware security key (YubiKey, Titan) as a backup
+
+Enroll at least **two** passkeys so a lost device doesn't lock you out.
+Non-root passkeys (regular user accounts for Immich/Jellyfin etc.) *can*
+go in Vaultwarden — they're not the keys to the identity system itself.

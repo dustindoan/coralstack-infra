@@ -20,11 +20,26 @@ warn() { printf '\033[1;33m!!\033[0m  %s\n' "$*" >&2; }
 die()  { printf '\033[1;31mxx\033[0m  %s\n' "$*" >&2; exit 1; }
 
 # ─── Prereqs ─────────────────────────────────────────────────────────────────
-command -v docker >/dev/null || die "docker not found. Install Docker Engine first."
-docker compose version >/dev/null 2>&1 || die "docker compose v2 not found."
-command -v openssl >/dev/null || die "openssl not found (needed for secret generation)."
-command -v curl >/dev/null    || die "curl not found (needed to fetch Immich upstream compose + Jellyfin plugin)."
-command -v unzip >/dev/null   || die "unzip not found (needed to extract Jellyfin plugin). On Debian/Ubuntu: sudo apt install unzip"
+# Auto-install missing userland tools on Debian/Ubuntu. Docker itself is out of
+# scope — too many install paths (get.docker.com, distro repo, Docker Desktop).
+ensure_pkg() {
+	local cmd="$1" pkg="${2:-$1}"
+	command -v "$cmd" >/dev/null && return 0
+	if command -v apt-get >/dev/null; then
+		log "Installing $pkg (provides $cmd)"
+		sudo apt-get update -qq
+		sudo apt-get install -y "$pkg"
+	else
+		die "$cmd not found, and no apt-get available. Install $pkg manually."
+	fi
+}
+
+ensure_pkg curl
+ensure_pkg unzip
+ensure_pkg openssl
+
+command -v docker >/dev/null || die "docker not found. Install Docker Engine first: curl -fsSL https://get.docker.com | sudo sh"
+docker compose version >/dev/null 2>&1 || die "docker compose v2 not found (bundled with modern Docker Engine)."
 
 # ─── Root .env ───────────────────────────────────────────────────────────────
 if [[ ! -f .env ]]; then

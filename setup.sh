@@ -189,7 +189,9 @@ Next steps:
   1. Watch Caddy obtain certs: docker compose logs -f caddy
      (First boot takes 30-60s for DNS-01 challenges + LE issuance.)
 
-  2. Open https://id.${BASE_DOMAIN} and create the first Pocket ID admin user.
+  2. Open https://id.${BASE_DOMAIN}/signup/setup to bootstrap the first Pocket ID admin user.
+     (The /signup/setup path is required only for the very first admin — visiting just / shows
+     a login page that can't help you when no account exists yet.)
 
   3. Wire OIDC into Immich and Jellyfin - see docs/ONBOARDING.md.
 EOF

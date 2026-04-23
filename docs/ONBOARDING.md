@@ -9,62 +9,77 @@ via Pocket ID's API.
 
 ## 0. First things first
 
-1. Open `https://id.${BASE_DOMAIN}`.
-2. Create the first admin user. Register a passkey (biometric preferred).
+1. Open `https://id.${BASE_DOMAIN}/signup/setup` (the `/signup/setup` path is required for the first admin — the root URL only shows a login screen).
+2. Create the first admin user. Register a passkey (biometric preferred). Use Safari for the smoothest iCloud Keychain handoff; Chrome/Edge on macOS Sonoma+ also work via the system credential picker.
 3. **Sign out and sign back in with the passkey** to confirm it works before
    trusting it as the only login.
 
+## 0.5. Create user groups
+
+Pocket ID authorizes access to OIDC clients by group membership, so groups must exist before clients can have any authorized users. Create at minimum:
+
+- **`members`** — the default access tier for everyone on coralstack (admin + all households). Assign this to every OIDC client users should be able to reach (Vaultwarden, Jellyfin, Ente, etc.).
+- **`admins`** — elevated access for maintenance-only services (future infrastructure dashboards, etc.). Assign only to the admin user(s).
+
+In Pocket ID: **Groups** sidebar → create both. Then **Users** → edit your admin user → add to both groups. Future household members just get added to `members` when onboarded.
+
+Per-household groups (`household-1`, `household-2`) become relevant only when you deploy per-household service instances (per [multi-tenancy memory](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_multitenancy.md)). Skip for now.
+
 ## 1. Register each OIDC client in Pocket ID
 
-In Pocket ID's admin UI, go to **OIDC Clients** → **Add Client** for each
-service below. You'll get back a `client_id` and `client_secret` for each —
-save them somewhere (you'll paste them into the service in a minute).
+In Pocket ID's admin UI, go to **OIDC Clients** → **Add Client** for each service below. You'll get back a `client_id` and `client_secret` for each — save them somewhere (you'll paste them into the service in a minute). Every client needs **Allowed groups: `members`** so authenticated users are actually authorized.
 
-### Immich
+### Vaultwarden
 
-| Field                | Value                                                |
-| -------------------- | ---------------------------------------------------- |
-| Name                 | Immich                                               |
-| Callback URLs        | `https://photos.${BASE_DOMAIN}/auth/login`           |
-|                      | `https://photos.${BASE_DOMAIN}/user-settings`        |
-|                      | `app.immich:///oauth-callback` (mobile app deep link)|
-| Logout callback URLs | `https://photos.${BASE_DOMAIN}`                      |
+> Requires the OIDCWarden fork (`timshel/oidcwarden` image). Mainline Vaultwarden's first-SSO-login flow is broken ([vaultwarden#6316](https://github.com/dani-garcia/vaultwarden/issues/6316)) — new users bounce back to the login form instead of being prompted for a master password. `services/vaultwarden/docker-compose.yml` pins OIDCWarden for this reason.
+
+| Field                | Value                                                            |
+| -------------------- | ---------------------------------------------------------------- |
+| Name                 | Vaultwarden                                                      |
+| Client Launch URL    | `https://vault.${BASE_DOMAIN}`                                   |
+| Callback URLs        | `https://vault.${BASE_DOMAIN}/identity/connect/oidc-signin`      |
+| Logout callback URLs | `https://vault.${BASE_DOMAIN}`                                   |
+| PKCE                 | enabled                                                          |
+| Allowed groups       | `members`                                                        |
 
 ### Jellyfin
 
-Jellyfin's OIDC support is via the [SSO plugin](https://github.com/9p4/jellyfin-plugin-sso).
-`setup.sh` pre-seeds the plugin into the Jellyfin config volume on first run,
-so you should see it under Admin → Dashboard → Plugins on first boot without
-any manual install. If you don't, restart Jellyfin once
-(`docker compose restart jellyfin`) or check `setup.sh` output for errors.
+Jellyfin's OIDC support is via the [SSO plugin](https://github.com/9p4/jellyfin-plugin-sso). `setup.sh` pre-seeds the plugin into the Jellyfin config volume on first run, so you should see it under Admin → Dashboard → Plugins on first boot without any manual install. If you don't, restart Jellyfin once (`docker compose restart jellyfin`) or check `setup.sh` output for errors.
 
-| Field                | Value                                                |
-| -------------------- | ---------------------------------------------------- |
-| Name                 | Jellyfin                                             |
-| Callback URLs        | `https://media.${BASE_DOMAIN}/sso/OID/redirect/pocket-id` |
-| Logout callback URLs | `https://media.${BASE_DOMAIN}`                       |
-
-### Vaultwarden — intentionally *not* SSO'd
-
-Vaultwarden stays on master passphrase + device biometric unlock, not OIDC.
-This is a deliberate decision — see [the architecture note](#why-vaultwarden-stays-out-of-sso).
+| Field                | Value                                                            |
+| -------------------- | ---------------------------------------------------------------- |
+| Name                 | Jellyfin                                                         |
+| Client Launch URL    | `https://media.${BASE_DOMAIN}`                                   |
+| Callback URLs        | `https://media.${BASE_DOMAIN}/sso/OID/redirect/pocket-id`        |
+| Logout callback URLs | `https://media.${BASE_DOMAIN}`                                   |
+| PKCE                 | enabled                                                          |
+| Allowed groups       | `members`                                                        |
 
 ## 2. Paste the credentials into each service
 
-### Immich
+### Vaultwarden
 
-Immich admin → **Settings** → **Authentication** → **OAuth**.
+Edit `services/vaultwarden/.env` on the Apps VM:
 
-| Field                     | Value                                         |
-| ------------------------- | --------------------------------------------- |
-| Enabled                   | on                                            |
-| Issuer URL                | `https://id.${BASE_DOMAIN}`                   |
-| Client ID                 | (from Pocket ID)                              |
-| Client Secret             | (from Pocket ID)                              |
-| Scope                     | `openid email profile`                        |
-| Auto Register             | on (if you want members to self-provision)    |
+```
+SSO_ENABLED=true
+SSO_ONLY=false                              # keep master password fallback
+SSO_SIGNUPS_MATCH_EMAIL=true
+SSO_ALLOW_UNKNOWN_EMAIL_VERIFICATION=true   # Pocket ID doesn't assert verified status
+SSO_PKCE=true
+SSO_SCOPES=email profile
+SSO_CLIENT_ID=<from Pocket ID>
+SSO_CLIENT_SECRET=<from Pocket ID>
+```
 
-Save, sign out, and test the "Login with OIDC" button.
+Then:
+```bash
+docker compose up -d vaultwarden
+```
+
+Test at `https://vault.${BASE_DOMAIN}` — click **Sign in with SSO** → passkey auth at Pocket ID → redirected back → prompted to set master passphrase (first time only) or enter existing passphrase → vault opens.
+
+**How auth layers work:** SSO authenticates "who you are" to the Vaultwarden server. Master passphrase derives the vault encryption key on your device. They're independent — Pocket ID outage doesn't lock you out (master password fallback stays enabled), and master passphrase compromise doesn't affect SSO identity. See [vaultwarden auth memory](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_vaultwarden_auth.md) for the full model.
 
 ### Jellyfin
 
@@ -85,47 +100,29 @@ add a link to it from the Jellyfin login page via the branding settings.
 
 ## 3. Add more community members
 
-1. In Pocket ID, create user accounts (or enable self-registration).
-2. Each user signs in at `https://id.${BASE_DOMAIN}` and registers a passkey.
-3. They then sign into Immich / Jellyfin via the OIDC button — accounts are
-   auto-provisioned if you enabled that.
+1. In Pocket ID, create the user → assign to `members` group.
+2. Have the user sign in at `https://id.${BASE_DOMAIN}` and register a passkey (Safari for smoothest iCloud Keychain handoff).
+3. They then sign into Vaultwarden / Jellyfin / other services via the "Sign in with SSO" button — accounts are auto-provisioned via `SSO_SIGNUPS_MATCH_EMAIL`.
+4. **For Vaultwarden specifically:** first SSO login triggers a "set master passphrase" prompt (thanks to OIDCWarden fork — mainline bounces here). Walk them through Diceware generation + writing it on paper for their safe. This is a one-time step per member.
 
-The one-passkey-per-person story only works if you actually test the passkey
-flow on each device. Budget 15 minutes per new member for hand-holding the
-first time.
+Budget ~15 minutes per new member for hand-holding the first time. Most of that is explaining the two-credential model below, not technical setup.
 
-## Why Vaultwarden stays out of SSO
+## The "two-credential" model for members
 
-Password managers are the one service that shouldn't go through your identity
-provider. Three reasons:
+Each member has exactly two things they need to remember / keep safe:
 
-1. **Break-glass recovery.** If Pocket ID ever breaks (corrupted DB, misconfig,
-   lost admin passkey), you need to be able to get into Vaultwarden to retrieve
-   recovery credentials. SSO'ing Vaultwarden through Pocket ID creates a
-   circular dependency — the thing you'd need to recover is behind the thing
-   that's broken.
-2. **Industry pattern.** 1Password, Bitwarden Cloud, and every other serious
-   password manager keeps its own auth for the same reason. We inherit this.
-3. **Mobile apps don't speak OIDC anyway.** Bitwarden's mobile clients use
-   master password + biometric unlock, regardless of what the server supports.
+- **Pocket ID passkey** — stored in their device's OS keychain (iCloud Keychain / Windows Hello) or a hardware security key. Single biometric tap approves any SSO login across the coralstack (Vaultwarden, Jellyfin, Ente, future services).
+- **Vaultwarden master passphrase** — learned once, written on paper, stored in a physical safe. Decrypts the vault on each device. Independent of SSO — master passphrase compromise doesn't affect other services, Pocket ID outage doesn't lock vault.
 
-**The revised "one passkey" story** for household members:
-
-- **Vaultwarden:** learn a Diceware master passphrase once. Unlock daily via
-  Touch ID / Face ID on each device. Separate root of trust.
-- **Everything else (Immich, Jellyfin, future services):** one Pocket ID
-  passkey stored in the OS keychain (iCloud Keychain, Windows Hello, hardware
-  key). Single biometric approves any OIDC login.
-
-Two credentials, two failure modes, never lose both at once.
+Two credentials, two failure modes, never lose both at once. See the [secret tiering memory](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_secret_tiering.md) for the full taxonomy of what lives where.
 
 ### Where to store the Pocket ID root admin passkey
 
-**Not in Vaultwarden** — that's the circular dependency. Store it in:
-- iCloud Keychain (Safari, auto-syncs to iPhone/iPad)
-- Windows Hello / Google Password Manager (Chrome)
-- A hardware security key (YubiKey, Titan) as a backup
+As a member/user, the primary passkey lives in your OS keychain. For the **admin** (root of SSO for the whole coralstack):
 
-Enroll at least **two** passkeys so a lost device doesn't lock you out.
-Non-root passkeys (regular user accounts for Immich/Jellyfin etc.) *can*
-go in Vaultwarden — they're not the keys to the identity system itself.
+- **Primary:** iCloud Keychain (Safari, syncs across Apple devices) or equivalent
+- **Backup:** a second passkey registered on either a hardware security key (YubiKey in safe) or in Vaultwarden itself — the latter is acceptable because Pocket ID compromise doesn't cascade into Vaultwarden (vault encryption is master-passphrase-derived, independent of SSO)
+- **Recovery codes:** if Pocket ID surfaces them, print and store with paper Tier-1 credentials
+- **Nuclear option:** set `MAINTENANCE_MODE=true` in `services/pocket-id/.env` + restart the container → allows re-bootstrapping admin if all passkeys are lost
+
+Non-root passkeys (regular user SSO passkeys for daily service logins) can freely go in Vaultwarden.

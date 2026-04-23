@@ -1,6 +1,11 @@
 services:
   vaultwarden:
-    image: vaultwarden/server:1.35.7-alpine
+    # OIDCWarden — the Timshel fork maintained by the author of Vaultwarden's
+    # merged SSO PR. We're on it because mainline's first-SSO-login flow is
+    # broken (see vaultwarden#6316): new SSO users bounce back to the login
+    # form instead of being prompted to set a master password. OIDCWarden
+    # fixes that. Drop-in compatible with mainline Vaultwarden data dirs.
+    image: timshel/oidcwarden:v2026.3.1-3-alpine
     container_name: vaultwarden
     restart: unless-stopped
     env_file:

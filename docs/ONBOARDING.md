@@ -94,8 +94,12 @@ Launch the app. On the login screen:
 2. Choose **Self-hosted environment**
 3. **Server URL:** `https://vault.${BASE_DOMAIN}`
 4. Save
-5. Log in with your email → click **Enterprise single sign-on** → enter any non-empty SSO identifier (Vaultwarden uses `VW_DUMMY_IDENTIFIER` internally; your entry is cosmetic) → passkey → master passphrase → vault
-6. Settings → Preferences → enable **Unlock with Touch ID** (or Windows Hello / equivalent)
+5. Log in with your email. **Note: Enterprise SSO via the desktop app is currently broken** with our Pocket ID + OIDCWarden combination (nonce mismatch on token exchange — under investigation upstream). For desktop, use **email + master passphrase** login instead. SSO via the browser extension and mobile apps still works.
+6. Once logged in: **Settings → Preferences** and enable ALL of these (none are default-on; without them browser-extension biometric unlock will silently fail):
+   - **Unlock with Touch ID** — daily unlock convenience
+   - **Ask for Touch ID on app start** — biometric instead of master passphrase on app relaunch
+   - **Allow browser integration** — required for the extension to talk to desktop
+   - **Require verification for browser integration** — each browser session needs explicit approval (security layer; recommended on)
 
 **Browser extension (Chrome / Safari / Firefox):**
 1. Install Bitwarden from the browser's extension store. (On Safari, the Mac App Store version of Bitwarden bundles the Safari extension — enable it under Safari → Preferences → Extensions.)

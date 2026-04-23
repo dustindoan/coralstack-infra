@@ -81,6 +81,40 @@ Test at `https://vault.${BASE_DOMAIN}` — click **Sign in with SSO** → passke
 
 **How auth layers work:** SSO authenticates "who you are" to the Vaultwarden server. Master passphrase derives the vault encryption key on your device. They're independent — Pocket ID outage doesn't lock you out (master password fallback stays enabled), and master passphrase compromise doesn't affect SSO identity. See [vaultwarden auth memory](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_vaultwarden_auth.md) for the full model.
 
+#### Install Bitwarden clients (self-hosted server URL configuration)
+
+The web UI works, but for daily use every member installs the Bitwarden desktop + browser extension + mobile app, all pointed at the self-hosted server. **Don't skip the server-URL step or the client talks to Bitwarden Cloud instead and fails mysteriously.**
+
+**Desktop (macOS):**
+```bash
+brew install --cask bitwarden   # or download from bitwarden.com/download
+```
+Launch the app. On the login screen:
+1. Click the **gear / settings icon** at the top-right of the login form
+2. Choose **Self-hosted environment**
+3. **Server URL:** `https://vault.${BASE_DOMAIN}`
+4. Save
+5. Log in with your email → click **Enterprise single sign-on** → enter any non-empty SSO identifier (Vaultwarden uses `VW_DUMMY_IDENTIFIER` internally; your entry is cosmetic) → passkey → master passphrase → vault
+6. Settings → Preferences → enable **Unlock with Touch ID** (or Windows Hello / equivalent)
+
+**Browser extension (Chrome / Safari / Firefox):**
+1. Install Bitwarden from the browser's extension store. (On Safari, the Mac App Store version of Bitwarden bundles the Safari extension — enable it under Safari → Preferences → Extensions.)
+2. Open the extension → gear icon on login → same self-hosted URL config as desktop
+3. Log in the same way (SSO + master passphrase)
+4. Enable biometric unlock if offered
+
+**Mobile (iOS / Android):**
+1. Install Bitwarden from App Store / Play Store
+2. On the login screen, tap the **gear/settings icon** at the top-right
+3. Set **Server URL** to `https://vault.${BASE_DOMAIN}` under Self-hosted environment
+4. Log in via SSO + master passphrase + biometric unlock
+5. **iOS: enable AutoFill** under Settings → Passwords → AutoFill Passwords → Bitwarden. **Android: enable the Bitwarden accessibility/autofill service** so passkey and password filling works across apps.
+
+**Sanity checks after client install:**
+- Open a non-coralstack website in your browser → extension autofills saved credentials
+- Lock + unlock the vault via biometric to confirm offline unlock works (proves master passphrase cached in keychain, not just server-side)
+- On mobile: set phone to airplane mode and try unlocking the vault — should succeed (vault contents cache locally; you only need network for sync and SSO re-auth)
+
 ### Jellyfin
 
 Admin → Plugins → SSO-Auth → Add Provider:

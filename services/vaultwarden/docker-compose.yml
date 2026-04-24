@@ -22,4 +22,4 @@ services:
       # here in environment: rather than in services/vaultwarden/.env.
       SSO_AUTHORITY: https://id.${BASE_DOMAIN}
     volumes:
-      - ${DATA_PATH:-../../data}/vaultwarden:/data
+      - ${DATA_PATH:?DATA_PATH must be set (run ./setup.sh which resolves it to an absolute path)}/vaultwarden:/data

@@ -12,4 +12,4 @@ services:
       # DB provider is inferred from DB_CONNECTION_STRING. Omitted = SQLite
       # at data/pocket-id.db (see services/pocket-id/.env for override).
     volumes:
-      - ${DATA_PATH:-../../data}/pocket-id:/app/data
+      - ${DATA_PATH:?DATA_PATH must be set (run ./setup.sh which resolves it to an absolute path)}/pocket-id:/app/data

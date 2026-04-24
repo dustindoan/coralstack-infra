@@ -58,13 +58,27 @@ set -a; source .env; set +a
 : "${CF_API_TOKEN:?CF_API_TOKEN is not set in .env (required for Cloudflare DNS-01 ACME)}"
 : "${DATA_PATH:=./data}"
 
-# Absolute version of DATA_PATH — Immich's compose bind-mounts are relative
-# to the included compose file's directory, so we need absolute paths for
-# the vars we inject into services/immich/.env.
-if [[ "$DATA_PATH" = /* ]]; then
-	ABS_DATA_PATH="$DATA_PATH"
-else
+# Resolve DATA_PATH to absolute so every compose file (root + included) gets
+# the same mount paths. Docker compose's `include:` resolves relative paths
+# relative to the INCLUDED file's directory, not the project root — so a
+# DATA_PATH of "./data" means different dirs in root vs service compose
+# files. Absolute paths sidestep the ambiguity entirely.
+if [[ "$DATA_PATH" != /* ]]; then
 	ABS_DATA_PATH="$REPO_ROOT/${DATA_PATH#./}"
+	# Normalize to a real path (handles .., symlinks, double slashes)
+	mkdir -p "$ABS_DATA_PATH"
+	ABS_DATA_PATH="$(cd "$ABS_DATA_PATH" && pwd)"
+	log "Resolved DATA_PATH → $ABS_DATA_PATH (was: $DATA_PATH)"
+	# Write the absolute path back to .env so future setup.sh runs AND
+	# `docker compose` invocations both see the same resolved value.
+	if grep -q '^DATA_PATH=' .env; then
+		sed -i.bak "s|^DATA_PATH=.*|DATA_PATH=$ABS_DATA_PATH|" .env && rm -f .env.bak
+	else
+		printf '\nDATA_PATH=%s\n' "$ABS_DATA_PATH" >> .env
+	fi
+	DATA_PATH="$ABS_DATA_PATH"
+else
+	ABS_DATA_PATH="$DATA_PATH"
 fi
 
 [[ -d "$STORAGE_PATH" ]] || warn "STORAGE_PATH ($STORAGE_PATH) doesn't exist yet — create it before starting services that need it."

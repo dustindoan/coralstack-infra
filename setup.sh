@@ -9,10 +9,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$REPO_ROOT"
 
 # ─── Pinned upstream versions ────────────────────────────────────────────────
-# Bumping Immich is a two-step: change IMMICH_VERSION here, re-run setup.sh.
-# It refetches the upstream compose and writes the matching version into
-# services/immich/.env.
-IMMICH_VERSION=v2.7.4
+# Ente image tags live in services/ente/.env (ENTE_SERVER_VERSION,
+# ENTE_WEB_VERSION) — bump them there, then docker compose pull && up -d.
 JELLYFIN_SSO_VERSION=4.0.0.4
 
 log()  { printf '\033[1;36m==>\033[0m %s\n' "$*"; }
@@ -37,6 +35,9 @@ ensure_pkg() {
 ensure_pkg curl
 ensure_pkg unzip
 ensure_pkg openssl
+# envsubst (used to render services/ente/museum.yaml from its template) ships
+# in gettext-base on Debian/Ubuntu, gettext on Fedora/Arch.
+ensure_pkg envsubst gettext-base
 
 command -v docker >/dev/null || die "docker not found. Install Docker Engine first: curl -fsSL https://get.docker.com | sudo sh"
 docker compose version >/dev/null 2>&1 || die "docker compose v2 not found (bundled with modern Docker Engine)."
@@ -90,7 +91,14 @@ mkdir -p \
 	"$DATA_PATH/pocket-id" \
 	"$DATA_PATH/vaultwarden" \
 	"$DATA_PATH/jellyfin/config" "$DATA_PATH/jellyfin/cache" \
-	"$DATA_PATH/immich/model-cache" "$DATA_PATH/immich/postgres"
+	"$DATA_PATH/ente/postgres" "$DATA_PATH/ente/museum-data"
+
+# Ente photo blobs land on STORAGE_PATH (USB-attached storage), not DATA_PATH
+# (root FS). Pre-create the bucket dir if STORAGE_PATH is mounted; if it isn't,
+# the compose's ${STORAGE_PATH:?...} guard will fail fast with a clear error.
+if [[ -d "$STORAGE_PATH" ]]; then
+	mkdir -p "$STORAGE_PATH/ente-minio"
+fi
 
 # ─── Per-service secrets ─────────────────────────────────────────────────────
 # Copy .env.example → .env for any service that doesn't have one yet, then
@@ -139,34 +147,38 @@ gen_base64() { openssl rand -base64 48 | tr -d '\n'; }
 
 init_service_env pocket-id
 init_service_env vaultwarden
-init_service_env immich
+init_service_env ente
 
 fill_secret services/pocket-id/.env   ENCRYPTION_KEY   "$(gen_hex)"
 fill_secret services/vaultwarden/.env ADMIN_TOKEN      "$(gen_base64)"
 
-# Immich: only DB_PASSWORD is needed — upstream's postgres service reads it
-# directly from the shared .env. Paths are derived from root config so they
-# track DATA_PATH/STORAGE_PATH edits.
-# All fill-if-blank so migrating from an existing Immich install is just:
-#   cp /path/to/old/immich/.env services/immich/.env
-# setup.sh then fills whatever's still blank without touching existing values.
-fill_secret services/immich/.env      DB_PASSWORD      "$(gen_hex)"
-fill_secret services/immich/.env      IMMICH_VERSION   "$IMMICH_VERSION"
-fill_secret services/immich/.env      UPLOAD_LOCATION  "$STORAGE_PATH/photos"
-fill_secret services/immich/.env      DB_DATA_LOCATION "$ABS_DATA_PATH/immich/postgres"
+# Ente secrets — sized to match what museum's libsodium APIs decode to
+# (crypto_secretbox_KEYBYTES=32 for ENTE_MUSEUM_KEY, generichash_BYTES_MAX=64
+# for ENTE_MUSEUM_HASH). Don't change these sizes without checking museum's
+# source. fill_secret is no-op when value already set, so re-runs are safe and
+# you can migrate by copying an existing services/ente/.env in.
+fill_secret services/ente/.env ENTE_DB_PASSWORD     "$(openssl rand -base64 21 | tr -d '\n')"
+fill_secret services/ente/.env ENTE_MINIO_USER      "minio-$(openssl rand -base64 6 | tr -d '\n+/=')"
+fill_secret services/ente/.env ENTE_MINIO_PASSWORD  "$(openssl rand -base64 21 | tr -d '\n')"
+fill_secret services/ente/.env ENTE_MUSEUM_KEY      "$(openssl rand -base64 32 | tr -d '\n')"
+fill_secret services/ente/.env ENTE_MUSEUM_HASH     "$(openssl rand -base64 64 | tr -d '\n')"
+# JWT secret uses URL-safe base64 (per Ente's quickstart.sh: sodium_base64_VARIANT_URLSAFE).
+fill_secret services/ente/.env ENTE_JWT_SECRET      "$(openssl rand -base64 32 | tr -d '\n' | tr '+/' '-_')"
 
-# ─── Immich upstream compose ─────────────────────────────────────────────────
-# Fetch the pinned release's docker-compose.yml so our overlay can include it
-# verbatim. This gives us automatic version alignment (postgres, Valkey, ML,
-# server) without hand-copying upstream's pins.
-immich_upstream=services/immich/upstream.yml
-if [[ ! -f "$immich_upstream" ]]; then
-	log "Fetching Immich $IMMICH_VERSION upstream compose"
-	command -v curl >/dev/null || die "curl not found (needed to fetch Immich upstream compose)."
-	curl -fsSL \
-		"https://github.com/immich-app/immich/releases/download/$IMMICH_VERSION/docker-compose.yml" \
-		-o "$immich_upstream"
-	log "Fetched $immich_upstream — delete it to re-fetch on next run (e.g. after bumping IMMICH_VERSION)."
+# ─── Ente museum.yaml render ─────────────────────────────────────────────────
+# museum.yaml is mounted into the ente-museum container; its content depends
+# on per-deploy values (BASE_DOMAIN, generated secrets). We render it once
+# from services/ente/museum.yaml.template and write to ${DATA_PATH}/ente/
+# museum.yaml. Skip on re-runs so hand edits to the rendered file survive.
+ente_museum_yaml="$DATA_PATH/ente/museum.yaml"
+if [[ ! -f "$ente_museum_yaml" ]]; then
+	log "Rendering $ente_museum_yaml from museum.yaml.template"
+	# shellcheck disable=SC1091
+	set -a; source services/ente/.env; set +a
+	# Allowlist substitution to avoid clobbering any other $VAR-shaped strings
+	# the template might gain in the future.
+	envsubst '$BASE_DOMAIN $ENTE_DB_PASSWORD $ENTE_MINIO_USER $ENTE_MINIO_PASSWORD $ENTE_MUSEUM_KEY $ENTE_MUSEUM_HASH $ENTE_JWT_SECRET' \
+		< services/ente/museum.yaml.template > "$ente_museum_yaml"
 fi
 
 # ─── Jellyfin SSO plugin (pre-seed) ──────────────────────────────────────────
@@ -207,5 +219,7 @@ Next steps:
      (The /signup/setup path is required only for the very first admin — visiting just / shows
      a login page that can't help you when no account exists yet.)
 
-  3. Wire OIDC into Immich and Jellyfin - see docs/ONBOARDING.md.
+  3. Wire OIDC into Jellyfin and onboard the first Ente user — see docs/ONBOARDING.md.
+     (Ente Photos has no native OIDC; members onboard via email-OTT and store
+     their Ente password in their Pocket-ID-SSO'd Vaultwarden vault.)
 EOF

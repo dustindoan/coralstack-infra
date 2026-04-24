@@ -36,14 +36,34 @@ vault.{$BASE_DOMAIN} {
 	reverse_proxy vaultwarden:80
 }
 
-# ─── Immich ──────────────────────────────────────────────────────────────────
+# ─── Ente Photos web app ─────────────────────────────────────────────────────
 photos.{$BASE_DOMAIN} {
 	import tls_cloudflare
-	# Large photo/video uploads — default Caddy limit would truncate them.
+	reverse_proxy ente-web:3000
+}
+
+# ─── Ente museum (API server) ────────────────────────────────────────────────
+# Mobile + web clients hit this directly for uploads/downloads. The 50GB body
+# size matters here, not on the photos web route — uploads stream through the
+# API, not the SPA.
+photos-api.{$BASE_DOMAIN} {
+	import tls_cloudflare
 	request_body {
 		max_size 50GB
 	}
-	reverse_proxy immich-server:2283
+	reverse_proxy ente-museum:8080
+}
+
+# ─── Ente accounts (passkey 2FA flow) ────────────────────────────────────────
+photos-accounts.{$BASE_DOMAIN} {
+	import tls_cloudflare
+	reverse_proxy ente-web:3001
+}
+
+# ─── Ente public albums (share-link recipients) ──────────────────────────────
+photos-albums.{$BASE_DOMAIN} {
+	import tls_cloudflare
+	reverse_proxy ente-web:3002
 }
 
 # ─── Jellyfin ────────────────────────────────────────────────────────────────

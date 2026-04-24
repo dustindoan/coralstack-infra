@@ -11,9 +11,9 @@ of the community connects over Tailscale or public DNS. Any community can fork a
 | Service      | Purpose                   | Replaces                |
 | ------------ | ------------------------- | ----------------------- |
 | Pocket ID    | OIDC + passkeys (SSO)     | Sign in with Apple      |
-| Immich       | Photos & videos           | iCloud Photos           |
+| Ente Photos  | Photos & videos (E2E)     | iCloud Photos           |
 | Jellyfin     | Music (+ movies/TV)       | Apple Music / Spotify   |
-| Vaultwarden  | Password vault            | iCloud Keychain         |
+| Vaultwarden  | Password vault (E2E)      | iCloud Keychain         |
 | Caddy        | Reverse proxy + auto-TLS  | Manual cert juggling    |
 
 Services are opt-in: comment any service out of `docker-compose.yml` (the top-level `include:` list)
@@ -43,11 +43,14 @@ See [docs/QUICKSTART.md](docs/QUICKSTART.md) for the full first-run walkthrough 
                                 │
          ┌──────────┬───────────┼───────────┬──────────┐
          ▼          ▼           ▼           ▼          ▼
-     Pocket ID   Immich     Jellyfin   Vaultwarden  (future)
+     Pocket ID   Ente       Jellyfin   Vaultwarden  (future)
         (OIDC provider)
 ```
 
-Subdomain convention: `{service}.{BASE_DOMAIN}`. E.g. `photos.campbellriver.coralstack.org`.
+Subdomain convention: `{service}.{BASE_DOMAIN}` for the primary entry point of each service,
+plus `{service}-{subapp}.{BASE_DOMAIN}` for multi-app services. Ente routes four subdomains
+(`photos.`, `photos-api.`, `photos-accounts.`, `photos-albums.`) — kept flat so a single
+`*.{BASE_DOMAIN}` Cloudflare wildcard covers them all.
 
 ## Design notes
 

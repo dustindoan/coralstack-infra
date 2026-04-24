@@ -33,7 +33,7 @@ NUC7i7BNH (single NIC, 32GB RAM)
          │                                     │
      OPNsense VM                           Apps VM
      WAN: vmbr0 (192.168.4.20 static,      (10.0.0.10, reserved by OPNsense)
-          pinned via eero DHCP reservation) Caddy + Immich + Jellyfin +
+          pinned via eero DHCP reservation) Caddy + Ente + Jellyfin +
      LAN: vmbr1 (10.0.0.1/24, runs         Vaultwarden + Pocket ID
           DHCP for Apps VM)                TerraMaster D4-320 via USB passthrough
      Port-forward 443 → 10.0.0.10:443
@@ -374,7 +374,7 @@ On the Apps VM:
    ```
    **If the drive has existing data from the old setup, just mount it — don't mkfs.** Using `LABEL=` in fstab means the mount survives USB enumeration reshuffles.
 
-   **Critical: fail-closed on unmount.** If the TerraMaster USB disappears (bus hiccup, enclosure power loss, unplug), the empty `/mnt/storage` directory reverts to being writable on the VM's root filesystem. Any service writing there (Immich, Jellyfin, etc.) will silently fill the 100GB OS disk in hours. Protect against this:
+   **Critical: fail-closed on unmount.** If the TerraMaster USB disappears (bus hiccup, enclosure power loss, unplug), the empty `/mnt/storage` directory reverts to being writable on the VM's root filesystem. Any service writing there (Ente's MinIO blobs, Jellyfin's library scans, etc.) will silently fill the 100GB OS disk in hours. Protect against this:
    ```bash
    sudo umount /mnt/storage
    sudo chmod 000 /mnt/storage   # lock down the bare directory
@@ -440,7 +440,10 @@ On the Apps VM:
 4. **Test each service end-to-end:**
    - Pocket ID: login with existing passkey (or re-enroll if lost)
    - Vaultwarden: login, confirm vault decrypts
-   - Immich: login, browse library, trigger a mobile upload
+   - Ente Photos: web at `https://photos.${BASE_DOMAIN}`, log in with your
+     Ente password (retrieve from Vaultwarden), confirm albums load.
+     Mobile: configure server endpoint `https://photos-api.${BASE_DOMAIN}`,
+     log in, trigger a backup.
    - Jellyfin: login, play a media file
 
 5. **Clean up temporary Proxmox bridge IP:**
@@ -450,31 +453,6 @@ On the Apps VM:
    ```
 
 **Checkpoint:** All services reachable publicly via TLS at expected URLs. Family can access without Tailscale.
-
-## Phase 6 — Add Ente (after baseline is stable)
-
-**Don't do this on migration weekend.** Let the baseline bake for at least a few days with your real usage before adding the Ente trial.
-
-When ready:
-
-1. **Create `services/ente/docker-compose.yml`** using upstream include pattern (matches Immich precedent from commit 6a1a9d5):
-   ```yaml
-   include:
-     - path: https://raw.githubusercontent.com/ente-io/ente/<PIN_TAG>/server/compose.yaml
-   services:
-     # overrides only: network attachment to coralstack, env pins, etc.
-   ```
-   Pin `<PIN_TAG>` to a specific Ente release tag (check Ente's releases page).
-
-2. **Add to root `docker-compose.yml`** `include:` list, analogous to Immich's entry.
-
-3. **Add Ente's `.env`** — Ente's docs (ente.com/help/self-hosting/installation/compose) lay out the required vars. Store S3 bucket endpoint pointing at whatever S3 layer Ente's upstream compose ships (currently MinIO; likely to change post-archival). Check [Ente strategy memory](../../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_ente_strategy.md) for context.
-
-4. **Add Caddy routes** for `photos-ente.${BASE_DOMAIN}` (or similar) pointing at the museum container.
-
-5. **Add Cloudflare DNS record** for the new subdomain.
-
-6. **Bring up.** Test mobile upload. Run the ~1 month trial per memory's success criteria.
 
 ## Rollback plan
 
@@ -505,6 +483,12 @@ Track these so they don't fall off the radar:
 - **Jellyfin config → scripted bootstrap.** Local admin user, media library paths, SSO-Auth plugin provider configuration. Jellyfin has a REST API. Same pattern as Pocket ID — a bootstrap script that creates the admin, adds libraries, configures the plugin.
 - **Vaultwarden config → bootstrap script.** Less critical since most state is user-created inside the vault, but the SSO config, admin token, and any org definitions could be scripted.
 
+**Ente Photos (deferred enhancements, not trial-blocking):**
+- **Pin Ente image versions.** `services/ente/.env` currently uses `ENTE_SERVER_VERSION=latest` and `ENTE_WEB_VERSION=latest`. Once the trial validates the deployment, switch to dated/digest-pinned tags so a `docker compose pull` doesn't surprise you. Track upstream at `ghcr.io/ente-io/server` and `ghcr.io/ente-io/web`.
+- **Configure museum SMTP.** Currently OTT verification codes go to `docker compose logs ente-museum` because no SMTP block is set in `museum.yaml`. For a real production deploy, wire up an SMTP relay (Fastmail/Resend/SES) so members get verification + sharing emails directly. Schema is in `ente-io/ente:server/configurations/local.yaml` (`smtp:` block).
+- **Path A: museum OIDC-provisioning patch** ([spike chip queued separately](#known-followups)). Eliminates the OTT-from-logs ritual and the disable-registration toggle dance for new-member onboarding. Keeps SRP/E2EE crypto unchanged. Trigger: when onboarding household #2, or sooner if the toggle ritual gets annoying enough during the trial.
+- **Watch upstream's MinIO migration.** Per [Ente strategy memory](../../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_ente_strategy.md), MinIO's GitHub repo was archived in early 2026; Ente will likely migrate the bundled object store (likely to Garage). When `ente-io/ente:server/quickstart.sh` shows a different stack, diff against our overlay and update.
+
 **Network / hardware:**
 - **Graduate past single-NIC bridge-mode.** Triggers: buying a firewall appliance (NanoPi R5S ~$100 / Protectli ~$250) OR adding a managed switch for router-on-a-stick. Removes double-NAT, enables physical L2 isolation.
 - **Phase 2 edge services (Pangolin + Headscale)** — deferred until second community joins.
@@ -518,7 +502,7 @@ Track these so they don't fall off the radar:
 - **OPNsense can't reach internet (WAN side):** confirm `192.168.4.20` is outside eero's DHCP pool, gateway is `192.168.4.1`, DNS servers reachable.
 - **Apps VM can't reach internet (via OPNsense):** OPNsense → Firewall → Rules → LAN → ensure default "allow LAN to any" rule is present. Check NAT outbound mode is "automatic."
 - **Port-forward not reaching Caddy:** verify chain: external curl → eero port-forward rule → OPNsense WAN firewall allowing 443 → OPNsense NAT rule → Apps VM listening on 443. Use `tcpdump` on OPNsense's WAN interface to see if packets arrive.
-- **Caddy can't get certs:** same as QUICKSTART.md troubleshooting — verify `CF_API_TOKEN` scope, verify DNS propagated.
+- **Caddy can't get certs:** same as QUICKSTART.md troubleshooting — verify `CF_API_TOKEN` scope, verify DNS propagated. All four Ente subdomains (`photos.`, `photos-api.`, `photos-accounts.`, `photos-albums.`) are single-level under `${BASE_DOMAIN}`, so the existing `*.${BASE_DOMAIN}` wildcard A record covers them all. Flat names were chosen specifically to avoid Cloudflare's wildcard limitation (a single `*.foo.example.com` record doesn't match `bar.foo.example.com`).
 - **TerraMaster disappears from Apps VM after reboot:** USB passthrough by vendor/product ID is stable across reboots; if it's not, pin by USB bus/port path instead via `qm set 101 -usb0 host=<bus-port>`.
 - **OPNsense DHCP reservation for Apps VM doesn't stick:** some VirtIO configs randomize MACs on VM recreation. Pin the MAC explicitly in the VM hardware config.
 - **Family WiFi / eero behaving differently:** this migration doesn't touch eero DHCP/DNS/firewall for existing devices — only adds one new port-forward rule and one reservation. If anything changed family-side, it's unrelated.

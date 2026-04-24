@@ -1,7 +1,7 @@
 # Quickstart
 
 End-to-end first-run walkthrough. Takes ~30 minutes on a fresh host, longer if
-you're also migrating existing Immich/Vaultwarden data.
+you're also migrating existing Ente/Vaultwarden data or exporting from Immich.
 
 ## Prerequisites
 
@@ -21,9 +21,12 @@ so the NUC never needs to be reachable from the public internet.
 
 1. At **Cloudflare**: add your domain to a free account. It hands you two
    nameservers. Switch your registrar to use them.
-2. Create a **DNS A record**: `*.<community>.<domain>` → your NUC's tailnet
-   IP (`tailscale ip -4`). Set **Proxy status: DNS only** (grey cloud). The
-   record is public but the IP is only routable over the tailnet.
+2. Create a **wildcard DNS A record**: `*.<community>.<domain>` → your host's
+   reachable IP (tailnet IP if Tailscale-only, or your home public IP via
+   OPNsense DDNS for the Phase 1 Proxmox setup). Set **Proxy status: DNS only**
+   (grey cloud). The wildcard covers every subdomain Caddy serves, including
+   the multiple Ente subdomains (`photos.`, `photos-api.`, `photos-accounts.`,
+   `photos-albums.`) — no per-subdomain records needed.
 3. Create a **scoped API token** at
    [dash.cloudflare.com/profile/api-tokens](https://dash.cloudflare.com/profile/api-tokens):
    Permissions `Zone → DNS → Edit`, scoped to this zone. Copy it.
@@ -57,15 +60,18 @@ sudo chown -R $USER:$USER /mnt/storage
 
 If you're migrating from existing services, move the data into place now:
 
-- **Immich:** easiest — our compose includes Immich's upstream `docker-compose.yml`
-  verbatim, so if you're already on a recent Immich release you can keep the
-  existing data in place. Stop your old compose (`cd /path/to/old/immich && docker compose down`),
-  then `cp /path/to/old/immich/.env services/immich/.env`. Set `IMMICH_VERSION`
-  in that file to match the `IMMICH_VERSION` constant at the top of `setup.sh`
-  (bump `setup.sh` up if needed). Your `UPLOAD_LOCATION` and `DB_DATA_LOCATION`
-  can stay pointing at their current absolute paths — our compose reads them
-  verbatim from your copied `.env`. setup.sh won't overwrite an existing
-  `services/immich/.env`, so nothing gets regenerated.
+- **Immich → Ente:** there is no in-place migration path between the two
+  (different storage formats, different on-server crypto). If you're moving
+  from a previous Immich install, treat your photos as an export-then-reimport:
+  use Immich's CLI (`immich upload`) or web UI to download everything to a
+  staging folder, then upload to Ente fresh from the mobile app or
+  `ente-cli`. Coralstack's design no longer hosts Immich, so the old service
+  needs to be torn down separately on the source host before this one comes up.
+- **Existing Ente self-host migration:** copy your old `services/ente/.env`
+  in (`cp /path/to/old/ente/.env services/ente/.env`) before running
+  `setup.sh` — it leaves existing values untouched. Your `${DATA_PATH}/ente/
+  postgres` and `${STORAGE_PATH}/ente-minio` directories should be moved into
+  place at the same paths the new compose expects.
 - **Navidrome → Jellyfin:** the library directory is unchanged — both read
   from `${STORAGE_PATH}/music`. Jellyfin will rescan on first boot.
 - **Vaultwarden:** in alpha, assume a fresh start. If you want to preserve
@@ -95,8 +101,20 @@ Re-running `setup.sh` is safe — it only fills in missing secrets.
 
 - **Pocket ID:** `https://id.${BASE_DOMAIN}` — create the first admin user.
   This account becomes the passkey root for the community.
-- **Immich:** `https://photos.${BASE_DOMAIN}` — create the admin account
-  locally first; you'll wire OIDC after.
+- **Ente Photos:** `https://photos.${BASE_DOMAIN}` — sign up with email +
+  Diceware password (save it to your Pocket-ID-SSO'd Vaultwarden). The
+  email-verification OTT prints to museum's logs unless SMTP is configured —
+  pull it with `docker compose logs ente-museum | grep -i ott`. After signup,
+  lock down registration so the world can't create accounts at your URL:
+  ```bash
+  # find your user ID
+  docker compose exec ente-postgres psql -U ente -d ente_db -c \
+    "SELECT user_id, email FROM users;"
+  # then edit ${DATA_PATH}/ente/museum.yaml: set internal.admin: <your id>
+  # and internal.disable-registration: true, then restart museum.
+  docker compose restart ente-museum
+  ```
+  See [ONBOARDING.md](ONBOARDING.md#ente-photos) for the per-member walkthrough.
 - **Jellyfin:** `https://media.${BASE_DOMAIN}` — complete the setup wizard,
   point it at `/media/music`.
 - **Vaultwarden:** `https://vault.${BASE_DOMAIN}` — flip `SIGNUPS_ALLOWED=true`
@@ -106,7 +124,8 @@ Re-running `setup.sh` is safe — it only fills in missing secrets.
 ## 6. Wire up SSO
 
 See [ONBOARDING.md](ONBOARDING.md) for OIDC client setup in Pocket ID and the
-matching config in Immich / Jellyfin.
+matching config in Vaultwarden / Jellyfin. Ente onboarding is separate (no OIDC
+support upstream — see ONBOARDING.md section 3).
 
 ## Troubleshooting
 
@@ -120,8 +139,18 @@ matching config in Immich / Jellyfin.
 - **`docker compose up` can't find the network:** the `coralstack` network is
   defined in the root compose. Always run `docker compose` commands from the
   repo root, not from a service directory.
-- **Immich postgres fails to start after migration:** version mismatch between
-  the upstream compose we fetched and your existing data. Check
-  `services/immich/upstream.yml` postgres tag against what your old compose
-  used; if they differ, either adjust `IMMICH_VERSION` in `setup.sh` to match
-  your data's era, or follow Immich's upgrade path to migrate the DB forward.
+- **Ente museum exits with `unable to load config`:** check
+  `${DATA_PATH}/ente/museum.yaml` exists and is valid YAML. If you edited the
+  template (`services/ente/museum.yaml.template`) but the rendered file is
+  stale, delete the rendered file and re-run `setup.sh` to re-render.
+- **Ente uploads fail with S3 errors:** the socat sidecar isn't routing
+  museum→MinIO traffic. `docker compose logs ente-socat` should show the bridge
+  is alive; `docker compose logs ente-minio` should show the three buckets
+  (`b2-eu-cen`, `wasabi-eu-central-2-v3`, `scw-eu-fr-v3`) created on first run.
+  If the buckets are missing, the post_start hook didn't run — restart
+  `ente-minio` to retry.
+- **Ente OTT email not arriving:** unless you've configured SMTP in
+  `museum.yaml`, verification codes go to the museum container's stdout. Pull
+  them with `docker compose logs ente-museum | grep -i ott`. Documented as a
+  trial-phase compromise — an OIDC-provisioning patch (path A) is queued as
+  a deferred followup to eliminate this loop.

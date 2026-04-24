@@ -1,7 +1,8 @@
 # SSO Onboarding
 
-How to wire Pocket ID as the OIDC provider for Immich and Jellyfin, so members
-sign in once with a passkey and get into everything.
+How to wire Pocket ID as the OIDC provider for Vaultwarden and Jellyfin so members
+sign in once with a passkey, plus the separate Ente Photos onboarding flow (Ente
+has no native OIDC and uses an SRP-derived encryption key — see [section 3](#3-ente-photos-onboarding)).
 
 This is a manual process today. `setup.sh` generates the shared secrets; you
 paste them into each service's admin UI. A future version may automate this
@@ -140,23 +141,89 @@ Admin → Plugins → SSO-Auth → Add Provider:
 The login URL becomes `https://media.${BASE_DOMAIN}/sso/OID/start/pocket-id` —
 add a link to it from the Jellyfin login page via the branding settings.
 
-## 3. Add more community members
+## 3. Ente Photos onboarding
+
+Ente is the one service in the stack that **does not** integrate with Pocket ID. Ente Photos uses
+SRP, where the user's password derives the end-to-end-encryption key — replacing the password with
+OIDC would require a Bitwarden-Key-Connector-style redesign that upstream hasn't engaged with
+([discussion #2241](https://github.com/ente-io/ente/discussions/2241), open since 2024). For the
+trial we accept this and store each member's Ente password in their (already-Pocket-ID-SSO'd)
+Vaultwarden vault. The model is exactly parallel to Vaultwarden's own master passphrase: an E2EE
+encryption key, independent of SSO identity.
+
+### Initial admin signup (one-time)
+
+1. Open `https://photos.${BASE_DOMAIN}` → tap **Sign up** → enter your email + a fresh Diceware
+   password. **Save the password to Vaultwarden immediately** under a "Self-hosted Ente" item.
+2. Museum sends an email-verification OTT, but unless you've configured SMTP it goes to the
+   container's stdout instead. Pull it:
+   ```bash
+   docker compose logs ente-museum | grep -i ott
+   ```
+3. Enter the OTT in the web app, set your encryption recovery code (write it down — Tier 1 paper
+   per [secret tiering](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_secret_tiering.md)),
+   land in the empty photo library.
+4. **Lock down registration** so `photos.${BASE_DOMAIN}` isn't a self-serve account creator for
+   the public internet:
+   ```bash
+   # find your numeric user ID
+   docker compose exec ente-postgres psql -U ente -d ente_db -c \
+     "SELECT user_id, email FROM users;"
+   # edit ${DATA_PATH}/ente/museum.yaml — set:
+   #   internal:
+   #     admin: <your numeric id>
+   #     disable-registration: true
+   docker compose restart ente-museum
+   ```
+5. Install the Ente mobile app (App Store / Play Store). On the login screen, tap the dev/server
+   icon (top-right gear in newer versions) → set **Server endpoint** to
+   `https://photos-api.${BASE_DOMAIN}`. Sign in with email + your Ente password. Mobile is
+   sign-in-only — there's no mobile signup path against a self-hosted instance.
+
+### Per-member onboarding
+
+When a new household joins:
+
+1. In `${DATA_PATH}/ente/museum.yaml`, flip `internal.disable-registration: false`, then
+   `docker compose restart ente-museum`.
+2. Send the new member to `https://photos.${BASE_DOMAIN}`. Walk them through the same signup +
+   Vaultwarden-save + recovery-code flow as the admin step above. (They sign in to their already-
+   provisioned Vaultwarden via Pocket ID first, then create a new vault item for the Ente password
+   they're about to set.)
+3. Once the member's account exists, flip `disable-registration: true` again and restart museum.
+4. Hand them the mobile-app server-URL configuration step. Budget ~30 minutes for the first member
+   you onboard — most of it is explaining why Ente's password lives in Vaultwarden separately from
+   their Pocket ID identity (the [two-credential model section below](#the-two-credential-model-for-members)
+   is the primer to walk them through).
+
+A spike is queued (path A in this stack's design discussions) to add OIDC-based provisioning to
+museum, eliminating the OTT loop and the disable-registration toggle ritual. Until that lands, the
+toggle dance above is the supported flow.
+
+## 4. Add more community members
 
 1. In Pocket ID, create the user → assign to `members` group.
 2. Have the user sign in at `https://id.${BASE_DOMAIN}` and register a passkey (Safari for smoothest iCloud Keychain handoff).
 3. They then sign into Vaultwarden / Jellyfin / other services via the "Sign in with SSO" button — accounts are auto-provisioned via `SSO_SIGNUPS_MATCH_EMAIL`.
 4. **For Vaultwarden specifically:** first SSO login triggers a "set master passphrase" prompt (thanks to OIDCWarden fork — mainline bounces here). Walk them through Diceware generation + writing it on paper for their safe. This is a one-time step per member.
+5. **For Ente Photos:** see [Per-member onboarding](#per-member-onboarding) above. Ente is the one service that doesn't auto-provision via SSO — needs the disable-registration toggle dance.
 
-Budget ~15 minutes per new member for hand-holding the first time. Most of that is explaining the two-credential model below, not technical setup.
+Budget ~30 minutes per new member for hand-holding the first time across the full stack. Most of that is explaining the two-credential model below + the Ente exception, not technical setup.
 
 ## The "two-credential" model for members
 
-Each member has exactly two things they need to remember / keep safe:
+Each member has exactly two things they need to **remember / keep on paper**:
 
-- **Pocket ID passkey** — stored in their device's OS keychain (iCloud Keychain / Windows Hello) or a hardware security key. Single biometric tap approves any SSO login across the coralstack (Vaultwarden, Jellyfin, Ente, future services).
+- **Pocket ID passkey** — stored in their device's OS keychain (iCloud Keychain / Windows Hello) or a hardware security key. Single biometric tap approves any SSO login across the coralstack (Vaultwarden, Jellyfin, future services).
 - **Vaultwarden master passphrase** — learned once, written on paper, stored in a physical safe. Decrypts the vault on each device. Independent of SSO — master passphrase compromise doesn't affect other services, Pocket ID outage doesn't lock vault.
 
-Two credentials, two failure modes, never lose both at once. See the [secret tiering memory](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_secret_tiering.md) for the full taxonomy of what lives where.
+Two credentials, two failure modes, never lose both at once.
+
+**Plus one credential that lives inside Vaultwarden, not in your head:**
+
+- **Ente Photos password** — set during Ente signup, saved to the Vaultwarden vault as soon as it's created. You retrieve it from Vaultwarden whenever you configure Ente on a new device. Ente uses end-to-end encryption with the password as the key-derivation root, so it can't be replaced by SSO without a redesign upstream hasn't engaged with — see [the Ente OIDC memory](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_ente_oidc.md). The model is the same E2EE-key-independent-of-SSO pattern Vaultwarden's own master passphrase already uses.
+
+Two paper credentials + Ente-password-in-Vaultwarden. See the [secret tiering memory](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_secret_tiering.md) for the full taxonomy of what lives where.
 
 ### Where to store the Pocket ID root admin passkey
 

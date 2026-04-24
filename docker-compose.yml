@@ -5,7 +5,7 @@ name: coralstack
 include:
   - services/pocket-id/docker-compose.yml
   - services/vaultwarden/docker-compose.yml
-  - services/immich/docker-compose.yml
+  - services/ente/docker-compose.yml
   - services/jellyfin/docker-compose.yml
 
 # The project's default network is named `coralstack`. Every service in this
@@ -51,3 +51,6 @@ services:
           - vault.${BASE_DOMAIN}
           - media.${BASE_DOMAIN}
           - photos.${BASE_DOMAIN}
+          - photos-api.${BASE_DOMAIN}
+          - photos-accounts.${BASE_DOMAIN}
+          - photos-albums.${BASE_DOMAIN}

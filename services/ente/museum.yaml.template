@@ -1,0 +1,63 @@
+# museum.yaml template. setup.sh substitutes ${VAR} placeholders against
+# .env on first run, writes the result to ${DATA_PATH}/ente/museum.yaml,
+# which the museum container mounts read-only.
+#
+# Edit this template — not the generated file. Re-running setup.sh does not
+# regenerate an existing museum.yaml (so editing the rendered file by hand
+# survives), but a fresh install regenerates from the template.
+
+db:
+    host: ente-postgres
+    port: 5432
+    name: ente_db
+    user: ente
+    password: ${ENTE_DB_PASSWORD}
+
+s3:
+    are_local_buckets: true
+    use_path_style_urls: true
+    b2-eu-cen:
+        key: ${ENTE_MINIO_USER}
+        secret: ${ENTE_MINIO_PASSWORD}
+        endpoint: localhost:3200
+        region: eu-central-2
+        bucket: b2-eu-cen
+    wasabi-eu-central-2-v3:
+        key: ${ENTE_MINIO_USER}
+        secret: ${ENTE_MINIO_PASSWORD}
+        endpoint: localhost:3200
+        region: eu-central-2
+        bucket: wasabi-eu-central-2-v3
+        compliance: false
+    scw-eu-fr-v3:
+        key: ${ENTE_MINIO_USER}
+        secret: ${ENTE_MINIO_PASSWORD}
+        endpoint: localhost:3200
+        region: eu-central-2
+        bucket: scw-eu-fr-v3
+
+apps:
+    public-albums: https://photos-albums.${BASE_DOMAIN}
+    cast: https://photos-cast.${BASE_DOMAIN}
+    accounts: https://photos-accounts.${BASE_DOMAIN}
+
+key:
+    encryption: ${ENTE_MUSEUM_KEY}
+    hash: ${ENTE_MUSEUM_HASH}
+
+jwt:
+    secret: ${ENTE_JWT_SECRET}
+
+# Registration + admin gates. Defaults below are permissive so the first admin
+# signup works on a fresh install. After admin signup:
+#   1. find your user ID:
+#        docker compose exec ente-postgres psql -U ente -d ente_db -c \
+#          "SELECT user_id, email FROM users;"
+#   2. set `internal.admin: <id>` and `internal.disable-registration: true` here
+#   3. docker compose restart ente-museum
+# To onboard a new member later: flip `disable-registration: false`, restart,
+# have them sign up, flip back to true, restart. See docs/ONBOARDING.md.
+internal:
+    disable-registration: false
+    admin:
+

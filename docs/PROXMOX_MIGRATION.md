@@ -493,11 +493,24 @@ Total rollback time: ~2-3 hours if backups are organized.
 
 Track these so they don't fall off the radar:
 
+**Storage + backup:**
 - **Populate TerraMaster with 3 more 8TB drives + build mdadm RAID 6 + set up restic backups + offsite rotation.** See [backup strategy memory](../../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_backup_strategy.md). Trigger: when real data stops being expendable.
-- **Convert VM creation to Terraform** (`bpg/proxmox` provider). Captures the OPNsense + Apps VM definitions as code. Pays off when you rebuild either VM.
-- **Move Cloudflare DNS records to Terraform.** Cloudflare provider is mature. Single source of truth for subdomains.
+- **Export OPNsense `config.xml` to Tier 1 safe storage** (paper + USB in the physical safe). Diagnostics → Backup/Restore → Download configuration. Do this after any material firewall/NAT/DHCP change. Lets you rebuild OPNsense from scratch in minutes via Restore. Not IaC, but a valid backup posture until/unless we go full OPNsense-as-code.
+
+**Infrastructure as code (not yet done — all documented in runbook as manual steps):**
+- **Proxmox VM definitions → Terraform** (`bpg/proxmox` provider). Captures OPNsense + Apps VM hardware config, USB passthrough, start-at-boot order. Pays off when you rebuild either VM.
+- **Cloudflare DNS → Terraform.** Cloudflare provider is mature. Single source of truth for subdomains. DDNS record is managed by OPNsense itself; Terraform owns the static wildcard.
+- **OPNsense config → declarative** via either (a) `config.xml` import at first boot bundled with our installer ISO, or (b) ansible-role-style config push. (a) is simpler for homogeneous deployments, (b) scales better for per-member customization. Matches the "Phase 2 deliverable" in the [install simplicity target memory](../../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_install_simplicity_target.md).
+- **Pocket ID config → API/SDK scripts.** OIDC client registrations, group definitions, group-to-client allowlist. Pocket ID has a REST API. A `pocket-id-bootstrap` script in the repo could replay the config against a fresh install. Would make member onboarding scripting trivial.
+- **Jellyfin config → scripted bootstrap.** Local admin user, media library paths, SSO-Auth plugin provider configuration. Jellyfin has a REST API. Same pattern as Pocket ID — a bootstrap script that creates the admin, adds libraries, configures the plugin.
+- **Vaultwarden config → bootstrap script.** Less critical since most state is user-created inside the vault, but the SSO config, admin token, and any org definitions could be scripted.
+
+**Network / hardware:**
 - **Graduate past single-NIC bridge-mode.** Triggers: buying a firewall appliance (NanoPi R5S ~$100 / Protectli ~$250) OR adding a managed switch for router-on-a-stick. Removes double-NAT, enables physical L2 isolation.
 - **Phase 2 edge services (Pangolin + Headscale)** — deferred until second community joins.
+
+**Non-IaC-able (document, don't try to automate):**
+- **eero config** (DHCP reservation, port-forward rule): consumer router with no stable API. Will always be a manual step documented for host-admins. If graduating past eero (see above), inherits Terraform-via-OPNsense or similar.
 
 ## Troubleshooting
 

@@ -35,3 +35,19 @@ services:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - ${DATA_PATH:-./data}/caddy/data:/data
       - ${DATA_PATH:-./data}/caddy/config:/config
+    # Register every coralstack subdomain as a docker network alias on Caddy
+    # so that inter-service calls using the public FQDN (e.g. Jellyfin's SSO
+    # plugin calling id.${BASE_DOMAIN}/.well-known/openid-configuration)
+    # resolve internally to Caddy via Docker's embedded DNS instead of going
+    # out through eero's hairpin NAT. Caddy still routes by SNI to the right
+    # upstream; LE certs still valid because hostnames match.
+    #
+    # When adding a new subdomain to the Caddyfile, also add it here.
+    networks:
+      default:
+        aliases:
+          - ${BASE_DOMAIN}
+          - id.${BASE_DOMAIN}
+          - vault.${BASE_DOMAIN}
+          - media.${BASE_DOMAIN}
+          - photos.${BASE_DOMAIN}

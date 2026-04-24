@@ -67,7 +67,7 @@ SSO_ONLY=false                              # keep master password fallback
 SSO_SIGNUPS_MATCH_EMAIL=true
 SSO_ALLOW_UNKNOWN_EMAIL_VERIFICATION=true   # Pocket ID doesn't assert verified status
 SSO_PKCE=true
-SSO_SCOPES=email profile
+SSO_SCOPES=email profile groups   # `groups` is required for Pocket ID to emit the groups claim — its docs imply otherwise but the source is explicit
 SSO_CLIENT_ID=<from Pocket ID>
 SSO_CLIENT_SECRET=<from Pocket ID>
 ```
@@ -131,7 +131,11 @@ Admin → Plugins → SSO-Auth → Add Provider:
 | OIDC Secret               | (from Pocket ID)                              |
 | Enabled                   | on                                            |
 | Enable Authorization by Plugin | on                                       |
-| Roles                     | leave blank (or map Pocket ID groups later)   |
+| Request Additional Scopes | `groups` (required — Pocket ID only emits the groups claim when the scope is explicitly requested) |
+| Scheme Override           | `https` (Caddy terminates TLS; without this, the plugin generates `http://` callbacks that Pocket ID rejects) |
+| Role Claim                | `groups`                                      |
+| Admin Roles               | `admins`                                      |
+| Roles                     | `members` (gates login to Pocket ID `members` group; blank to allow any authenticated user) |
 
 The login URL becomes `https://media.${BASE_DOMAIN}/sso/OID/start/pocket-id` —
 add a link to it from the Jellyfin login page via the branding settings.

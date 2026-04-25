@@ -26,7 +26,7 @@ so the NUC never needs to be reachable from the public internet.
    OPNsense DDNS for the Phase 1 Proxmox setup). Set **Proxy status: DNS only**
    (grey cloud). The wildcard covers every subdomain Caddy serves, including
    the multiple Ente subdomains (`photos.`, `photos-api.`, `photos-accounts.`,
-   `photos-albums.`) — no per-subdomain records needed.
+   `photos-albums.`, `photos-storage.`) — no per-subdomain records needed.
 3. Create a **scoped API token** at
    [dash.cloudflare.com/profile/api-tokens](https://dash.cloudflare.com/profile/api-tokens):
    Permissions `Zone → DNS → Edit`, scoped to this zone. Copy it.
@@ -143,12 +143,20 @@ support upstream — see ONBOARDING.md section 3).
   `${DATA_PATH}/ente/museum.yaml` exists and is valid YAML. If you edited the
   template (`services/ente/museum.yaml.template`) but the rendered file is
   stale, delete the rendered file and re-run `setup.sh` to re-render.
-- **Ente uploads fail with S3 errors:** the socat sidecar isn't routing
-  museum→MinIO traffic. `docker compose logs ente-socat` should show the bridge
-  is alive; `docker compose logs ente-minio` should show the three buckets
-  (`b2-eu-cen`, `wasabi-eu-central-2-v3`, `scw-eu-fr-v3`) created on first run.
-  If the buckets are missing, the post_start hook didn't run — restart
-  `ente-minio` to retry.
+- **Ente uploads fail with S3 errors:** check `docker compose logs ente-museum |
+  grep -iE "upload|s3"` for the failure mode. If museum returns 200 to
+  `/files/upload-url` but the client's PUT fails, the presigned URL almost
+  certainly contains the wrong S3 endpoint — verify `${DATA_PATH}/ente/
+  museum.yaml` has each bucket's `endpoint:` set to
+  `https://photos-storage.${BASE_DOMAIN}` (NOT `localhost:3200` — the
+  upstream-quickstart default that breaks for any client outside the museum
+  container's network namespace). Also confirm the photos-storage Caddy route
+  resolves end-to-end:
+  ```bash
+  curl -sI https://photos-storage.${BASE_DOMAIN}    # should reach MinIO (any 4xx is fine, just not connection-refused)
+  ```
+  If buckets are missing in MinIO entirely (rather than unreachable), the
+  post_start hook didn't run — `docker compose restart ente-minio` retries it.
 - **Ente OTT email not arriving:** unless you've configured SMTP in
   `museum.yaml`, verification codes go to the museum container's stdout. Pull
   them with `docker compose logs ente-museum | grep -i ott`. Documented as a

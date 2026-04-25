@@ -54,3 +54,4 @@ services:
           - photos-api.${BASE_DOMAIN}
           - photos-accounts.${BASE_DOMAIN}
           - photos-albums.${BASE_DOMAIN}
+          - photos-storage.${BASE_DOMAIN}

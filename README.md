@@ -48,9 +48,12 @@ See [docs/QUICKSTART.md](docs/QUICKSTART.md) for the full first-run walkthrough 
 ```
 
 Subdomain convention: `{service}.{BASE_DOMAIN}` for the primary entry point of each service,
-plus `{service}-{subapp}.{BASE_DOMAIN}` for multi-app services. Ente routes four subdomains
-(`photos.`, `photos-api.`, `photos-accounts.`, `photos-albums.`) — kept flat so a single
-`*.{BASE_DOMAIN}` Cloudflare wildcard covers them all.
+plus `{service}-{subapp}.{BASE_DOMAIN}` for multi-app services. Ente routes five subdomains
+(`photos.`, `photos-api.`, `photos-accounts.`, `photos-albums.`, `photos-storage.`) —
+kept flat so a single `*.{BASE_DOMAIN}` Cloudflare wildcard covers them all. The
+`photos-storage.` subdomain fronts MinIO so presigned S3 URLs museum hands to mobile/
+desktop clients are publicly reachable; without it, uploads fail because clients try
+to PUT to their own machine's `localhost:3200`.
 
 ## Design notes
 

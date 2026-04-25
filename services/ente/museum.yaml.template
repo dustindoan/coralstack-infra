@@ -14,25 +14,32 @@ db:
     password: ${ENTE_DB_PASSWORD}
 
 s3:
-    are_local_buckets: true
+    # are_local_buckets: false because we're now serving MinIO via HTTPS
+    # through Caddy (photos-storage.${BASE_DOMAIN}) rather than HTTP-on-
+    # localhost. Upstream's true-with-localhost trick only worked because
+    # museum's S3 client and clients both lived inside the museum container's
+    # network namespace via the socat sidecar — broken for self-hosted mobile/
+    # desktop clients which can't reach localhost:3200 on their own machines.
+    # See https://help.ente.io/self-hosting/guides/configuring-s3
+    are_local_buckets: false
     use_path_style_urls: true
     b2-eu-cen:
         key: ${ENTE_MINIO_USER}
         secret: ${ENTE_MINIO_PASSWORD}
-        endpoint: localhost:3200
+        endpoint: https://photos-storage.${BASE_DOMAIN}
         region: eu-central-2
         bucket: b2-eu-cen
     wasabi-eu-central-2-v3:
         key: ${ENTE_MINIO_USER}
         secret: ${ENTE_MINIO_PASSWORD}
-        endpoint: localhost:3200
+        endpoint: https://photos-storage.${BASE_DOMAIN}
         region: eu-central-2
         bucket: wasabi-eu-central-2-v3
         compliance: false
     scw-eu-fr-v3:
         key: ${ENTE_MINIO_USER}
         secret: ${ENTE_MINIO_PASSWORD}
-        endpoint: localhost:3200
+        endpoint: https://photos-storage.${BASE_DOMAIN}
         region: eu-central-2
         bucket: scw-eu-fr-v3
 

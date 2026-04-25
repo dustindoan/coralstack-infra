@@ -25,12 +25,12 @@ services:
       # mount read-only so the container can't accidentally rewrite it.
       - ${DATA_PATH:?DATA_PATH must be set in .env — run ./setup.sh which resolves it to an absolute path}/ente/museum.yaml:/museum.yaml:ro
       - ${DATA_PATH:?DATA_PATH must be set in .env — run ./setup.sh which resolves it to an absolute path}/ente/museum-data:/data:ro
-    healthcheck:
-      test: ["CMD", "curl", "--fail", "http://localhost:8080/ping"]
-      interval: 60s
-      timeout: 5s
-      retries: 3
-      start_period: 5s
+    # Note: Ente's quickstart.sh ships a `curl --fail http://localhost:8080/ping`
+    # healthcheck, but ghcr.io/ente-io/server doesn't include curl — so the
+    # check always fails and museum perpetually shows (unhealthy) even when
+    # serving requests fine. Omitting the healthcheck entirely is more honest
+    # than reporting persistent false negatives. Followup to add a proper
+    # check using whatever's actually in the image (wget? museum --health?).
 
   # Bridges localhost:3200 inside ente-museum's network namespace to ente-minio.
   # Museum's S3 client targets localhost:3200 (matching Ente prod where each

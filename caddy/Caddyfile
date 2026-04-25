@@ -66,6 +66,28 @@ photos-albums.{$BASE_DOMAIN} {
 	reverse_proxy ente-web:3002
 }
 
+# ─── Ente S3 storage (MinIO) ─────────────────────────────────────────────────
+# Museum hands clients presigned S3 URLs containing the endpoint configured in
+# museum.yaml's `s3.<bucket>.endpoint`. Self-hosted clients (mobile, desktop)
+# need that to be a publicly reachable URL — the `localhost:3200` + socat-bridge
+# trick from Ente's quickstart works only for museum-internal traffic; external
+# clients try to PUT to their own machine's loopback and fail. This route
+# exposes MinIO via the same Caddy edge so presigned URLs work everywhere.
+# See https://help.ente.io/self-hosting/guides/configuring-s3 for upstream's
+# framing of the same gotcha.
+photos-storage.{$BASE_DOMAIN} {
+	import tls_cloudflare
+	# Photos + videos can be large; same envelope as the API route for
+	# direct PUT uploads.
+	request_body {
+		max_size 50GB
+	}
+	# Caddy preserves the Host header by default, which is what AWS SigV4
+	# signature validation needs (client signs with photos-storage.<domain>;
+	# MinIO recomputes the signature using the same host).
+	reverse_proxy ente-minio:3200
+}
+
 # ─── Jellyfin ────────────────────────────────────────────────────────────────
 media.{$BASE_DOMAIN} {
 	import tls_cloudflare

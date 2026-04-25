@@ -5,6 +5,26 @@
 # Edit this template — not the generated file. Re-running setup.sh does not
 # regenerate an existing museum.yaml (so editing the rendered file by hand
 # survives), but a fresh install regenerates from the template.
+#
+# ⚠️  **DANGER on `rm museum.yaml && ./setup.sh` to pick up template
+# changes:** the regenerated file will be the template's defaults — meaning
+# `internal.disable-registration: false` (registration OPEN) and `admins:`
+# unset (no admin → admin API calls 401). Both of these are runtime
+# customizations that admin sets after deploy and that survive normal
+# re-runs only because setup.sh skips render when the file exists.
+#
+# ALWAYS back up runtime customizations before re-rendering:
+#     cp $DATA_PATH/ente/museum.yaml $DATA_PATH/ente/museum.yaml.bak
+#     rm $DATA_PATH/ente/museum.yaml
+#     ./setup.sh
+#     diff $DATA_PATH/ente/museum.yaml.bak $DATA_PATH/ente/museum.yaml
+#     # then manually re-apply admins / disable-registration / any other
+#     # runtime edits before restarting museum.
+#
+# setup.sh itself snapshots an existing file to .bak.<unixtime> on each
+# render, so worst case you can recover from $DATA_PATH/ente/*.bak.* — but
+# back up explicitly anyway, the .bak.* fallback is a safety net not a
+# substitute for diligence.
 
 db:
     host: ente-postgres
@@ -66,5 +86,14 @@ jwt:
 # have them sign up, flip back to true, restart. See docs/ONBOARDING.md.
 internal:
     disable-registration: false
-    admin:
+    # Use the plural list form even for a single admin. The schema comment
+    # advertises `admin: <id>` as a shortcut for one admin, but the code path
+    # that gates `ente admin update-subscription` and other CLI admin calls
+    # appears to only honor `admins:`. Confirmed broken on museum 2026-04-25.
+    admins:
+        # Add your numeric user_id here AFTER initial admin signup. Find it
+        # via:
+        #   docker compose exec ente-postgres psql -U ente -d ente_db -c \
+        #     "SELECT user_id FROM users;"
+        # Then set disable-registration: true above + restart museum.
 

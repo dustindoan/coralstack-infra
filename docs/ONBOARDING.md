@@ -166,16 +166,40 @@ encryption key, independent of SSO identity.
 4. **Lock down registration** so `photos.${BASE_DOMAIN}` isn't a self-serve account creator for
    the public internet:
    ```bash
-   # find your numeric user ID
+   # find your numeric user ID (the SELECT email FROM users column doesn't
+   # exist — Ente hashes/encrypts emails for E2EE, so user_id is your only
+   # stable handle here)
    docker compose exec ente-postgres psql -U ente -d ente_db -c \
-     "SELECT user_id, email FROM users;"
+     "SELECT user_id FROM users;"
    # edit ${DATA_PATH}/ente/museum.yaml — set:
    #   internal:
-   #     admin: <your numeric id>
    #     disable-registration: true
+   #     admins:
+   #         - <your numeric id>
    docker compose restart ente-museum
    ```
-5. Install the Ente mobile app (App Store / Play Store). On the login screen, tap the dev/server
+   **Use `admins:` (plural list), not `admin:` (singular).** The Ente CLI's
+   admin endpoints (used in step 5 below) only honor the plural list form
+   despite the schema's comment claiming singular is a valid shortcut.
+5. **Grant your account effectively-unlimited storage** (museum's default subscription is the
+   cloud-tier 10GB limit, which is enforced even on self-host). Install the Ente CLI on your
+   workstation (not the apps VM — CLI is a user tool):
+   ```bash
+   # Mac mini / desktop. See https://github.com/ente-io/ente/releases?q=tag%3Acli-v0
+   # for the current arch-specific tarball name.
+   curl -fsSL -O https://github.com/ente-io/ente/releases/download/cli-v0.2.3/ente-cli-v0.2.3-darwin-arm64.tar.gz
+   tar -xzf ente-cli-v0.2.3-darwin-arm64.tar.gz && chmod +x ente
+   mkdir -p ~/.ente && cat > ~/.ente/config.yaml <<EOF
+   endpoint:
+       api: https://photos-api.${BASE_DOMAIN}
+   EOF
+   ./ente account add   # prompts for email, password, OTT (grab from museum logs)
+   ./ente admin update-subscription -a <your-email> -u <your-email> --no-limit true
+   ```
+   Same `update-subscription` command is used per new household member during onboarding —
+   capture it as the canonical recipe.
+
+6. Install the Ente mobile app (App Store / Play Store). On the login screen, tap the dev/server
    icon (top-right gear in newer versions) → set **Server endpoint** to
    `https://photos-api.${BASE_DOMAIN}`. Sign in with email + your Ente password. Mobile is
    sign-in-only — there's no mobile signup path against a self-hosted instance.

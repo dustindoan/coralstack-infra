@@ -170,15 +170,43 @@ fill_secret services/ente/.env ENTE_JWT_SECRET      "$(openssl rand -base64 32 |
 # on per-deploy values (BASE_DOMAIN, generated secrets). We render it once
 # from services/ente/museum.yaml.template and write to ${DATA_PATH}/ente/
 # museum.yaml. Skip on re-runs so hand edits to the rendered file survive.
+#
+# Footgun: the template ships with permissive defaults so first-install
+# signup works (`disable-registration: false`, `admins:` unset). If you `rm`
+# the rendered file and re-run setup.sh to pick up template changes, your
+# runtime customizations (admin user IDs, registration lockdown) are wiped
+# and the next museum restart re-opens registration to the world. We can't
+# detect this from inside setup.sh after the fact, so loud warnings + an
+# auto-backup-of-existing-file are the mitigations:
 ente_museum_yaml="$DATA_PATH/ente/museum.yaml"
+ente_museum_template="services/ente/museum.yaml.template"
+
+if [[ -f "$ente_museum_yaml" ]]; then
+	# Auto-backup so re-rendering can be undone. Cheap insurance.
+	# Filename includes a unix timestamp so multiple backups don't collide.
+	cp "$ente_museum_yaml" "$ente_museum_yaml.bak.$(date +%s)"
+fi
+
 if [[ ! -f "$ente_museum_yaml" ]]; then
+	# Either fresh install OR user explicitly rm'd to force re-render.
 	log "Rendering $ente_museum_yaml from museum.yaml.template"
 	# shellcheck disable=SC1091
 	set -a; source services/ente/.env; set +a
 	# Allowlist substitution to avoid clobbering any other $VAR-shaped strings
 	# the template might gain in the future.
 	envsubst '$BASE_DOMAIN $ENTE_DB_PASSWORD $ENTE_MINIO_USER $ENTE_MINIO_PASSWORD $ENTE_MUSEUM_KEY $ENTE_MUSEUM_HASH $ENTE_JWT_SECRET' \
-		< services/ente/museum.yaml.template > "$ente_museum_yaml"
+		< "$ente_museum_template" > "$ente_museum_yaml"
+	# If a backup exists from a previous render, this is almost certainly a
+	# re-render after rm — warn loudly so admin remembers to re-apply runtime
+	# customizations (internal.admins, disable-registration, etc.) before the
+	# next museum restart.
+	latest_bak=$(ls -1t "$ente_museum_yaml".bak.* 2>/dev/null | head -1 || true)
+	if [[ -n "$latest_bak" ]]; then
+		warn "museum.yaml was just regenerated from template — runtime customizations from the previous version are NOT carried over."
+		warn "Compare against the backup and re-apply admin/disable-registration before restarting museum:"
+		warn "    diff $latest_bak $ente_museum_yaml"
+		warn "Specifically AT RISK on re-render: internal.admins, internal.disable-registration."
+	fi
 fi
 
 # ─── Jellyfin SSO plugin (pre-seed) ──────────────────────────────────────────

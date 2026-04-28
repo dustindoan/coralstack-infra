@@ -12,5 +12,4 @@ services:
       # beets manages the music library on the host; Jellyfin reads it read-only
       - ${STORAGE_PATH}/music:/media/music:ro
       - ${STORAGE_PATH}/movies:/media/movies:ro
-      # Optional: TV — uncomment if you use it
-      # - ${STORAGE_PATH}/tv:/media/tv:ro
+      - ${STORAGE_PATH}/shows:/media/shows:ro

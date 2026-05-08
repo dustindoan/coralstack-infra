@@ -7,6 +7,7 @@ include:
   - services/vaultwarden/docker-compose.yml
   - services/ente/docker-compose.yml
   - services/jellyfin/docker-compose.yml
+  - services/open-webui/docker-compose.yml
 
 # The project's default network is named `coralstack`. Every service in this
 # compose (and every included compose) lands on it automatically, so Caddy
@@ -55,3 +56,4 @@ services:
           - photos-accounts.${BASE_DOMAIN}
           - photos-albums.${BASE_DOMAIN}
           - photos-storage.${BASE_DOMAIN}
+          - ai.${BASE_DOMAIN}

@@ -18,25 +18,30 @@ ISP modem (Hitron FC777, bridge mode, single public IP)
    ▼
 eero (NAT, DHCP, primary home router, 192.168.4.0/24)
    │            │
-   │            ├─► family devices, WiFi, AirPort
+   │            ├─► family devices, WiFi
    │            │
    │            └─► port-forward 443 → 192.168.4.20 (OPNsense WAN)
    ▼
-NUC7i7BNH (single NIC, 32GB RAM)
-   │
-   [Proxmox VE bare-metal]
+AirPort (bridge/switch mode — passes 802.1Q VLAN tags transparently)
+   │                         │
+   ▼                         ▼
+NUC7i7BNH (single NIC)   Mac mini (admin/inference box)
+   │                       untagged → 192.168.4.x (eero DHCP, not used by stack)
+   [Proxmox VE]            VLAN 10  → 10.0.1.10 (OPNsense OPT1 DHCP reservation)
      │
-     ├── vmbr0 (bridged to physical NIC, home LAN side)
-     └── vmbr1 (internal-only, no physical NIC, DMZ side)
-         │
-         ┌──────────────────┼──────────────────┐
-         │                                     │
-     OPNsense VM                           Apps VM
-     WAN: vmbr0 (192.168.4.20 static,      (10.0.0.10, reserved by OPNsense)
-          pinned via eero DHCP reservation) Caddy + Ente + Jellyfin +
-     LAN: vmbr1 (10.0.0.1/24, runs         Vaultwarden + Pocket ID
-          DHCP for Apps VM)                TerraMaster D4-320 via USB passthrough
-     Port-forward 443 → 10.0.0.10:443
+     ├── vmbr0 (VLAN-aware bridge, physical NIC uplink)
+     │     ├─ [untagged]  OPNsense vtnet0 (WAN @ 192.168.4.20)
+     │     └─ [VLAN 10]   OPNsense vtnet2 (OPT1 @ 10.0.1.1/24 → Mac mini)
+     │
+     └── vmbr1 (internal-only, no physical NIC)
+           ├─ OPNsense vtnet1 (LAN @ 10.0.0.1/24, runs DHCP for Apps VM)
+           └─ Apps VM (10.0.0.10)
+                Caddy + Ente + Jellyfin + Vaultwarden + Pocket ID + Open WebUI
+                TerraMaster D4-320 via USB passthrough
+                Open WebUI → Ollama on Mac mini (10.0.1.10:11434, via OPNsense routing)
+
+     OPNsense port-forward: 443 → 10.0.0.10:443
+     OPNsense firewall:     LAN (10.0.0.0/24) ↔ OPT1 (10.0.1.0/24) pass
 ```
 
 See [Phase 1 trial-phase accepted compromises](../../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_infrastructure_architecture.md) for the honest framing of what this buys vs. deferred improvements.
@@ -156,7 +161,16 @@ EOF
    reboot
    ```
 
-8. **Configure network bridges.** Edit `/etc/network/interfaces`:
+8. **Configure network bridges.**
+
+   Web UI → node → **Network** tab:
+   - **Create → Linux Bridge** for `vmbr0`: address `192.168.4.10/24`, gateway `192.168.4.1`, bridge port `enp0s31f6`, check **VLAN aware**
+   - **Create → Linux Bridge** for `vmbr1`: address `10.0.0.2/24`, no gateway, no bridge port (internal-only). The `10.0.0.2` is the Proxmox host's management presence on the OPNsense LAN — needed for SSH-tunnelling into the OPNsense web GUI from anywhere outside the DMZ. Without it, you have no path into OPNsense once VMs are running.
+   - **Apply Configuration**
+
+   If bridges already exist (e.g. created during install), click each one → **Edit** to set or verify the options, then **Apply Configuration**. The Edit button is only active when logged in as `root@pam` — if it's greyed out, log out and back in selecting PAM as the realm.
+
+   If you prefer the CLI (equivalent to what the GUI writes), the relevant blocks should look like:
    ```
    auto vmbr0
    iface vmbr0 inet static
@@ -165,20 +179,19 @@ EOF
        bridge-ports enp0s31f6
        bridge-stp off
        bridge-fd 0
-       # existing bridge, carries home LAN traffic
+       bridge-vlan-aware yes
+       bridge-vids 2-4094
 
    auto vmbr1
-   iface vmbr1 inet manual
+   iface vmbr1 inet static
+       address 10.0.0.2/24
        bridge-ports none
        bridge-stp off
        bridge-fd 0
-       # internal-only bridge for Apps VM <-> OPNsense DMZ
    ```
-   ```bash
-   systemctl restart networking
-   # verify both bridges appear
-   ip link show
-   ```
+   Then `ifreload -a` to hot-apply without dropping the bridge.
+
+   `vmbr0` must have **VLAN aware** set — without it the bridge strips 802.1Q tags and OPNsense's OPT1 interface (VLAN 10) never sees the Mac mini's traffic.
 
 9. **Verify via web UI.** Open `https://192.168.4.10:8006` from your laptop. Log in as `root`. Dismiss the no-subscription notice.
 
@@ -208,9 +221,11 @@ Web UI → Create VM:
 - **CPU:** 2 cores, type `host`
 - **Memory:** 4096 MB (OPNsense 25.x UFS installer warns below ~3GB)
 - **Network:**
-  - Device 1: Bridge `vmbr0`, Model `VirtIO`, **write down the MAC address** — you need it for the eero reservation
-  - Device 2: add after creation: Bridge `vmbr1`, Model `VirtIO`
+  - Device 1: Bridge `vmbr0`, Model `VirtIO`, **uncheck Firewall**, **write down the MAC address** — you need it for the eero reservation
+  - Device 2: add after creation: Bridge `vmbr1`, Model `VirtIO`, **uncheck Firewall**
 - Finish.
+
+**Why Firewall: off on every VM NIC** — Proxmox's per-NIC firewall inserts an `fwbr/fwpr` veth chain between the VM tap and the host bridge. We don't use Proxmox's firewall (OPNsense itself is the firewall), and the chain creates a real fragility: any `ifreload -a` on the host bridges orphans the `fwpr` veths from the bridge, silently breaking VM connectivity until you `ip link set fwprNNNpX master vmbrY` manually. Disabling the per-NIC firewall removes the chain entirely — `tap` goes direct to `vmbr`, and `ifreload` becomes safe to run with VMs hot.
 
 ### 3c. Add OPNsense's WAN MAC to eero reservation
 
@@ -244,12 +259,14 @@ Once in the web GUI:
 
 1. **Interfaces → WAN:** set static IPv4 `192.168.4.20/24`, gateway `192.168.4.1` (eero). Uncheck "Block private networks" and "Block bogon networks" (WAN is on a private network).
 2. **Interfaces → LAN:** confirm `10.0.0.1/24`.
-3. **Services → Kea DHCPv4 → LAN:** OPNsense 26.x is on Kea (ISC is deprecated; the menu no longer shows ISC DHCPv4). Even if you enabled DHCP via the console Option 2, the Kea `Subnets` tab may be empty — the console config wrote to legacy ISC which the new UI doesn't surface. Reconfigure in Kea:
-   - **General tab:** enable service, select LAN interface
-   - **Subnets tab:** `+` add subnet `10.0.0.0/24`, pool `10.0.0.100-10.0.0.200`. Leave "Auto collect option data" checked (pulls gateway/DNS from the LAN interface automatically — don't fill Router/DNS manually)
+3. **Disable dnsmasq's DHCP first.** OPNsense 26.x ships with dnsmasq enabled by default; it grabs port 67 and Kea silently fails to bind with `DHCPSRV_OPEN_SOCKET_FAIL ... Address already in use`. Go to **Services → Dnsmasq DNS & DHCP → General**, uncheck **Enable**, Save → Apply. (Unbound is the default DNS resolver — disabling dnsmasq doesn't break DNS.) Verify nothing else is squatting on port 67: from the OPNsense shell, `sockstat -4 -l | grep :67` should return empty after this change.
+
+4. **Services → Kea DHCPv4 → LAN:** OPNsense 26.x is on Kea (ISC is deprecated; the menu no longer shows ISC DHCPv4). Even if you enabled DHCP via the console Option 2, the Kea `Subnets` tab may be empty — the console config wrote to legacy ISC which the new UI doesn't surface. Reconfigure in Kea:
+   - **General tab:** enable service, select LAN interface (the Interfaces field is multi-select — when you add OPT1 in Phase 3f, both LAN and OPT1 must be selected here, not just one)
+   - **Subnets tab:** `+` add subnet `10.0.0.0/24`, pool `10.0.0.100-10.0.0.200` (plain ASCII hyphen, no spaces — Kea rejects en-dashes or spaces in the range). Leave "Auto collect option data" checked (pulls gateway/DNS from the LAN interface automatically — don't fill Router/DNS manually)
    - **Reservations tab:** add the Apps VM MAC → `10.0.0.10` mapping (defer until Apps VM is created in Phase 4 and its MAC is known)
    - Save → Apply
-4. **Firewall → NAT → Destination NAT:** (renamed from "Port Forward" in OPNsense 26.x — same feature) add rule:
+5. **Firewall → NAT → Destination NAT:** (renamed from "Port Forward" in OPNsense 26.x — same feature) add rule:
    - Interface: WAN
    - Protocol: TCP
    - Destination Address: WAN address
@@ -259,12 +276,60 @@ Once in the web GUI:
    - Description: `Caddy HTTPS`
    - **Firewall rule: `Pass`** (OPNsense 26 renamed "Add associated filter rule (automatic)" to `Pass`. Don't leave as `Manual` — you'll get silent SYN drops because there's no matching pass rule on WAN.)
    - Save → Apply
-5. **System → Settings → Administration:** optionally change root password, disable default password.
-6. **Services → Dynamic DNS:** add Cloudflare DDNS for the home public IP. Use existing Cloudflare API token (scoped `Zone:DNS:Edit` on the coralstack zone).
+6. **System → Settings → Administration:** optionally change root password, disable default password.
+7. **Services → Dynamic DNS:** add Cloudflare DDNS for the home public IP. Use existing Cloudflare API token (scoped `Zone:DNS:Edit` on the coralstack zone).
 
 **Naming pitfall:** OPNsense's "LAN" in this topology is your internal DMZ network (`10.0.0.0/24`). OPNsense's "WAN" is actually your home LAN (`192.168.4.0/24`). Default docs assume LAN=home; adjust mentally.
 
 **Checkpoint:** OPNsense running, reachable on both interfaces, port-forward rule staged (target VM doesn't exist yet).
+
+### 3f. Add OPT1 (VLAN 10) for Mac mini
+
+This gives the Mac mini a stable IP managed entirely inside Proxmox/OPNsense, with no eero involvement. The AirPort in bridge/switch mode passes 802.1Q-tagged frames between the NUC and Mac mini transparently.
+
+**Prerequisite:** `vmbr0` must have VLAN aware enabled (Phase 1 step 8). Verify in Proxmox web UI → node → Network → vmbr0 → Edit — the VLAN aware checkbox must be checked. If not, check it and Apply Configuration before proceeding.
+
+**Add a third vNIC to the OPNsense VM (Proxmox web UI):**
+
+OPNsense VM → Hardware → Add → Network Device:
+- Bridge: `vmbr0`
+- VLAN Tag: `10`
+- Model: `VirtIO`
+- **Uncheck Firewall** (same reasoning as Phase 3b — and especially important here: leaving Firewall on creates an auto-generated `vmbr0v10` sub-bridge that intercepts VLAN 10 traffic. If you ever toggle it off later, the sub-bridge is orphaned but `nic0.10` remains attached to it, silently swallowing traffic until you `ip link del nic0.10 && ip link del vmbr0v10`. Setting Firewall: off from the start avoids the trap entirely.)
+
+This creates `vtnet2` inside OPNsense, carrying only VLAN-10 tagged frames from the physical AirPort segment.
+
+**Configure OPT1 in OPNsense web GUI:**
+
+1. **Interfaces → Assignments** → add `vtnet2` as `OPT1`. Save.
+2. **Interfaces → OPT1:**
+   - Enable: checked
+   - IPv4 Configuration Type: Static
+   - IPv4 Address: `10.0.1.1 / 24`
+   - Save → Apply Changes
+3. **Services → Kea DHCPv4:**
+   - **General tab:** the Interfaces field must include **both LAN and OPT1** (multi-select). Adding OPT1 to the system as a new interface does NOT auto-include it here — you must re-edit and select it. If only LAN is selected, Kea won't listen on OPT1 even with a subnet defined; clients will get no replies and `DHCPSRV_NO_SOCKETS_OPEN` will appear in `/var/log/kea/`.
+   - **OPT1 subnets tab:** `+` add `10.0.1.0/24`, pool `10.0.1.100-10.0.1.200` (plain hyphen, no spaces — Kea rejects en-dashes or spaces in the range)
+   - Save → Apply
+4. **Firewall → Rules → OPT1 → `+` add rule:**
+   - Action: Pass, Protocol: Any
+   - Source: OPT1 net, **Destination: `any`**
+   - Description: `OPT1 → any (admin box: LAN, internet, firewall itself)`
+   - Save
+
+   Don't restrict the destination to `LAN net` — that prevents OPT1 clients from pinging OPNsense itself (`10.0.1.1`) for ARP/management. `any` is correct here; OPNsense's interface segregation is handled by which interface the rule lives on, not by destination.
+5. **Firewall → Rules → LAN → `+` add rule:**
+   - Action: Pass, Protocol: Any
+   - Source: LAN net, Destination: OPT1 net
+   - Description: `LAN → OPT1 (Apps VM to admin box / Ollama)`
+   - Save → Apply Rules
+
+**Add Mac mini DHCP reservation** (defer until Mac mini's VLAN interface MAC is known — complete in Phase 4c):
+
+Services → Kea DHCPv4 → OPT1 → Reservations → `+`:
+- MAC: `<mac-mini-vlan10-mac>` (shown in macOS System Settings → Network → VLAN interface → Details → Hardware)
+- IP: `10.0.1.10`
+- Save → Apply
 
 ## Phase 4 — Apps VM
 
@@ -277,7 +342,7 @@ Web UI → Create VM:
 - **Disks:** 100 GB on `local-lvm` (OS + Docker images; data lives on TerraMaster)
 - **CPU:** 4 cores, type `host` (NUC7i7BNH is 2c/4t; 4 is the hard cap per VM. Over-commit with OPNsense's 2 is fine.)
 - **Memory:** 16384 MB
-- **Network:** Bridge `vmbr1`, Model `VirtIO`. **Write down the MAC.**
+- **Network:** Bridge `vmbr1`, Model `VirtIO`, **uncheck Firewall** (same reasoning as Phase 3b). **Write down the MAC.**
 - Finish, but don't start yet.
 
 ### 4b. Add the TerraMaster USB passthrough
@@ -317,12 +382,9 @@ Start the VM, install Ubuntu Server 24.04 LTS via console (Subiquity installer):
 
 SSH from the Proxmox host (handy because management is there):
 ```bash
-# from Proxmox host, apps VM is at 10.0.0.10 via OPNsense's network — need a route
-# easiest: SSH into OPNsense first via console, or install a tunneling SSH config
-# simplest for this step: temporarily add a LAN-side IP on Proxmox for vmbr1
-
-# On Proxmox host:
-ip addr add 10.0.0.2/24 dev vmbr1
+# from Proxmox host, apps VM is at 10.0.0.10 via OPNsense's DMZ.
+# Proxmox already has 10.0.0.2/24 on vmbr1 (per Phase 1 step 8) so it can
+# reach the Apps VM directly without any extra setup.
 ssh admin@10.0.0.10
 ```
 
@@ -344,7 +406,7 @@ On the Apps VM:
    sudo chmod 0440 /etc/sudoers.d/99-timeout
    ```
 
-   **SSH key auth from your Mac, via Proxmox as a jump host.** You can't route into `10.0.0.10` directly (it's behind OPNsense's DMZ), but Proxmox can reach it via the `10.0.0.2/24` IP we added to `vmbr1`. Use SSH ProxyJump:
+   **SSH key auth from your Mac, via Proxmox as a jump host.** You can't route into `10.0.0.10` directly (it's behind OPNsense's DMZ), but Proxmox can reach it via the `10.0.0.2/24` IP on `vmbr1` (configured in Phase 1 step 8). Use SSH ProxyJump:
 
    ```bash
    # from your Mac, one-time: push your key to the Apps VM via the jump
@@ -427,6 +489,98 @@ On the Apps VM:
 
 **Checkpoint:** Apps VM running, services up on internal `https://<service>.${BASE_DOMAIN}` reachable via OPNsense LAN.
 
+## Phase 4c — Mac mini (admin/inference box) network setup
+
+The Mac mini gets two IP addresses: its existing untagged eero address (ignore it) and a new VLAN 10 address managed by OPNsense. The AirPort passes the tagged frames; nothing changes on eero.
+
+**1. macOS VLAN interface (on the Mac mini):**
+
+The Mac mini's GUI Network panel doesn't have a `+` for VLAN directly — it's tucked under the three-dots menu:
+
+System Settings → Network → ⋯ menu → **Manage Virtual Interfaces** → `+` → New VLAN:
+- Interface (parent): your **built-in Ethernet** — *not* a Thunderbolt Ethernet adapter. Some Thunderbolt adapters silently strip 802.1Q tags; the built-in NIC is reliable.
+- VLAN ID: `10`
+- VLAN Name: `CoralStack DMZ`
+- Create
+
+The BSD device name is typically `vlan0` (verify with `ifconfig | grep -A1 vlan`).
+
+The new VLAN interface picks up a `10.0.1.x` address from OPNsense via DHCP. **Ignore the GUI's "Not Connected" status** — macOS shows that for VLAN interfaces even when they're working; trust `ifconfig`/`ping`, not the dot.
+
+**2. Lock the IP via DHCP reservation:**
+
+Find the VLAN interface MAC:
+```bash
+ifconfig vlan0 | grep ether
+```
+
+Enter that MAC in OPNsense → Services → Kea DHCPv4 → Reservations → `+` → IP `10.0.1.10` → Apply. Then renew the lease:
+```bash
+sudo ipconfig set vlan0 DHCP
+ifconfig vlan0 | grep inet      # should show 10.0.1.10
+```
+
+**3. Verify connectivity:**
+```bash
+# from Mac mini
+ping 10.0.1.1                   # OPT1 gateway
+# from Apps VM (once Ollama is running)
+curl http://10.0.1.10:11434/api/tags
+```
+
+The reverse direction (Mac mini → Apps VM at `10.0.0.10`) won't work without an OS-level route, but you don't need it for the Open WebUI use case. If you want it later, add it as a persistent route on macOS or push it via DHCP option 121 from Kea.
+
+**4. Ollama (use the official Mac app, not Homebrew):**
+
+Install from [ollama.com](https://ollama.com/download) — the Mac app has built-in auto-update and ships the `ollama` CLI. Homebrew's CLI-only formula doesn't auto-update without manual `brew upgrade`.
+
+Bind it to all interfaces (defaults to localhost). The `launchctl setenv` approach is per-session and lost on reboot — make it permanent with a LaunchAgent at `~/Library/LaunchAgents/com.ollama.host.plist`:
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key><string>com.ollama.host</string>
+    <key>ProgramArguments</key>
+    <array><string>launchctl</string><string>setenv</string><string>OLLAMA_HOST</string><string>0.0.0.0</string></array>
+    <key>RunAtLoad</key><true/>
+  </dict>
+</plist>
+```
+Load it:
+```bash
+launchctl load ~/Library/LaunchAgents/com.ollama.host.plist
+```
+Quit and relaunch the Ollama app. macOS Firewall will prompt to allow incoming connections — allow it.
+
+**Optional: raise the GPU wired-memory cap.** Apple Silicon defaults to ~75% of unified RAM for GPU use. For 48GB Mac mini that's ~36GB, plenty for any Qwen 3.6 size. Only worth raising if you're running long-context (256K+) where KV cache grows large:
+```bash
+sudo sysctl iogpu.wired_limit_mb=45056
+echo 'iogpu.wired_limit_mb=45056' | sudo tee -a /etc/sysctl.conf
+```
+
+**5. Headless setup** — so the Mac mini boots back online without a keyboard:
+
+- **System Settings → General → Sharing → Remote Login: On** (note the SSH user shown)
+- **System Settings → Users & Groups → Automatic login: \<your user\>** — required because the Ollama Mac app is a menu-bar GUI app and only starts when someone is logged in. Auto-login means power cycle = back online.
+- Confirm the Ollama app's "Start Ollama on login" toggle is on (default).
+
+**6. SSH access from your Mac** (via Apps VM as jump):
+```
+Host coralstack-mac-mini
+    HostName 10.0.1.10
+    User <mac-mini-user>
+    ProxyJump coralstack-apps
+```
+Then push your key:
+```bash
+ssh-copy-id coralstack-mac-mini
+```
+
+After this you can unplug the monitor and keyboard — manage everything via SSH and Open WebUI.
+
+**Checkpoint:** Mac mini reachable at `10.0.1.10` and via `ssh coralstack-mac-mini`, Ollama answering on `10.0.1.10:11434`, headless-ready (auto-login + Remote Login + persistent OLLAMA_HOST).
+
 ## Phase 5 — Cutover and validation
 
 1. **Add eero port-forward.** Eero app → port-forward rule → external 443 → 192.168.4.20 (OPNsense WAN IP) → internal 443. Save.
@@ -445,12 +599,6 @@ On the Apps VM:
      Mobile: configure server endpoint `https://photos-api.${BASE_DOMAIN}`,
      log in, trigger a backup.
    - Jellyfin: login, play a media file
-
-5. **Clean up temporary Proxmox bridge IP:**
-   ```bash
-   # on Proxmox host
-   ip addr del 10.0.0.2/24 dev vmbr1
-   ```
 
 **Checkpoint:** All services reachable publicly via TLS at expected URLs. Family can access without Tailscale.
 
@@ -492,7 +640,8 @@ Track these so they don't fall off the radar:
 - **Watch upstream's MinIO migration.** Per [Ente strategy memory](../../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_ente_strategy.md), MinIO's GitHub repo was archived in early 2026; Ente will likely migrate the bundled object store (likely to Garage). When `ente-io/ente:server/quickstart.sh` shows a different stack, diff against our overlay and update.
 
 **Network / hardware:**
-- **Graduate past single-NIC bridge-mode.** Triggers: buying a firewall appliance (NanoPi R5S ~$100 / Protectli ~$250) OR adding a managed switch for router-on-a-stick. Removes double-NAT, enables physical L2 isolation.
+- **Single-NIC VLAN segmentation is live** (Phase 3f + 4c above). The AirPort-as-dumb-switch + `bridge-vlan-aware yes` + OPNsense OPT1 approach gives the Mac mini a DMZ IP without touching eero and without a second physical NIC. The remaining limitation is no true L2 isolation between eero-LAN devices — all home devices share the untagged segment. That's acceptable for Phase 1 single-household.
+- **Graduate past double-NAT.** Triggers: buying a firewall appliance (NanoPi R5S ~$100 / Protectli ~$250) with two physical NICs. Removes double-NAT, enables proper L2 isolation between WAN, home LAN, and DMZ without VLAN tricks.
 - **Phase 2 edge services (Pangolin + Headscale)** — deferred until second community joins.
 
 **Non-IaC-able (document, don't try to automate):**
@@ -508,3 +657,11 @@ Track these so they don't fall off the radar:
 - **TerraMaster disappears from Apps VM after reboot:** USB passthrough by vendor/product ID is stable across reboots; if it's not, pin by USB bus/port path instead via `qm set 101 -usb0 host=<bus-port>`.
 - **OPNsense DHCP reservation for Apps VM doesn't stick:** some VirtIO configs randomize MACs on VM recreation. Pin the MAC explicitly in the VM hardware config.
 - **Family WiFi / eero behaving differently:** this migration doesn't touch eero DHCP/DNS/firewall for existing devices — only adds one new port-forward rule and one reservation. If anything changed family-side, it's unrelated.
+- **OPNsense GUI unreachable from outside the DMZ:** SSH-tunnel through Proxmox: `ssh -L 8443:10.0.0.1:443 coralstack-nuc`, then browse `https://localhost:8443`. Same pattern works for Proxmox itself: `ssh -L 8006:192.168.4.10:8006 coralstack-nuc` → `https://localhost:8006`.
+- **Proxmox GUI Edit button greyed out:** node-level Network edits require `root@pam` realm specifically, not Linux PAM users in the `pve` realm. Log out, log back in selecting **PAM** explicitly.
+- **OPNsense LAN interface lost its `10.0.0.1` IP and is DHCPing from itself:** symptom — `ifconfig vtnet1` shows `10.0.0.100` (or another DHCP-pool address) instead of `10.0.0.1`. Recovery: from OPNsense console option **2) Set interface IP address** → choose LAN → "Configure IPv4 via DHCP?" `N` → IPv4 `10.0.0.1`/`24` → no upstream gateway → "Enable DHCP server" `N` (Kea handles it now) → "Restore web GUI defaults" `N`. Cause is unclear — appears related to interface re-assignments triggering a DHCP fallback in OPNsense's startup config.
+- **`fwpr*` veth orphaned from `vmbr*` after `ifreload -a`:** symptom — VM connectivity lost, `bridge link show` shows `tap*` on `fwbr*` but the corresponding `fwpr*` has no master. Quick fix: `ip link set fwprNNNpX master vmbrY`. Permanent fix: disable Proxmox per-NIC firewall on the affected NIC (Hardware → netN → Edit → uncheck Firewall). With firewall off there's no `fwbr/fwpr` chain to orphan — `tap` goes direct to bridge.
+- **OPT1 traffic vanishes after disabling Proxmox firewall on a VLAN-tagged NIC:** Proxmox auto-creates a `vmbr0v<vlan>` sub-bridge when firewall is enabled on a tagged NIC. Toggling firewall off later orphans the sub-bridge but leaves `nic0.<vlan>@nic0` attached to it, intercepting all VLAN traffic. Fix: `ip link del nic0.<vlan> && ip link del vmbr0v<vlan>`. Avoid by setting Firewall: off on tagged NICs from the start (Phase 3f covers this).
+- **dnsmasq squats port 67, Kea fails to bind silently:** symptom — Kea logs `DHCPSRV_OPEN_SOCKET_FAIL ... Address already in use` for vtnet1/vtnet2; `sockstat -4 -l | grep :67` shows dnsmasq. Disable Services → Dnsmasq DNS & DHCP → uncheck Enable. Unbound is the default DNS resolver and unaffected.
+- **Kea Subnets save error "Entry X is not a valid range or subnet":** copy-pasted en-dash (`–`) or whitespace-padded hyphen in the pool. Use a plain ASCII hyphen with no surrounding spaces: `10.0.1.100-10.0.1.200`.
+- **OPT1 firewall rule with `Destination: LAN net` blocks ICMP to OPNsense itself:** symptom — Mac mini can ping nothing on OPT1 (`10.0.1.1` fails) even though DHCP works. The rule needs `Destination: any`, not `LAN net`. Pinging the firewall's own OPT1 address is to "this firewall," not "LAN net."

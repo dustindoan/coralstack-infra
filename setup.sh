@@ -91,7 +91,8 @@ mkdir -p \
 	"$DATA_PATH/pocket-id" \
 	"$DATA_PATH/vaultwarden" \
 	"$DATA_PATH/jellyfin/config" "$DATA_PATH/jellyfin/cache" \
-	"$DATA_PATH/ente/postgres" "$DATA_PATH/ente/museum-data"
+	"$DATA_PATH/ente/postgres" "$DATA_PATH/ente/museum-data" \
+	"$DATA_PATH/open-webui"
 
 # Ente photo blobs land on STORAGE_PATH (USB-attached storage), not DATA_PATH
 # (root FS). Pre-create the bucket dir if STORAGE_PATH is mounted; if it isn't,
@@ -148,9 +149,11 @@ gen_base64() { openssl rand -base64 48 | tr -d '\n'; }
 init_service_env pocket-id
 init_service_env vaultwarden
 init_service_env ente
+init_service_env open-webui
 
-fill_secret services/pocket-id/.env   ENCRYPTION_KEY   "$(gen_hex)"
-fill_secret services/vaultwarden/.env ADMIN_TOKEN      "$(gen_base64)"
+fill_secret services/pocket-id/.env   ENCRYPTION_KEY      "$(gen_hex)"
+fill_secret services/vaultwarden/.env ADMIN_TOKEN         "$(gen_base64)"
+fill_secret services/open-webui/.env  OPEN_WEBUI_SECRET_KEY "$(gen_hex)"
 
 # Ente secrets — sized to match what museum's libsodium APIs decode to
 # (crypto_secretbox_KEYBYTES=32 for ENTE_MUSEUM_KEY, generichash_BYTES_MAX=64

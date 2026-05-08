@@ -20,7 +20,7 @@
 # ─── Landing page ────────────────────────────────────────────────────────────
 {$BASE_DOMAIN} {
 	import tls_cloudflare
-	respond "CoralStack — you're connected. Services: id, vault, photos, media." 200
+	respond "CoralStack — you're connected. Services: id, vault, photos, media, ai." 200
 }
 
 # ─── Pocket ID (identity) ────────────────────────────────────────────────────
@@ -92,4 +92,10 @@ photos-storage.{$BASE_DOMAIN} {
 media.{$BASE_DOMAIN} {
 	import tls_cloudflare
 	reverse_proxy jellyfin:8096
+}
+
+# ─── Open WebUI (AI chat via Mac mini Ollama) ────────────────────────────────
+ai.{$BASE_DOMAIN} {
+	import tls_cloudflare
+	reverse_proxy open-webui:8080
 }

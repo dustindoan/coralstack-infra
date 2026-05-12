@@ -153,7 +153,7 @@ init_service_env open-webui
 
 fill_secret services/pocket-id/.env   ENCRYPTION_KEY      "$(gen_hex)"
 fill_secret services/vaultwarden/.env ADMIN_TOKEN         "$(gen_base64)"
-fill_secret services/open-webui/.env  OPEN_WEBUI_SECRET_KEY "$(gen_hex)"
+fill_secret services/open-webui/.env  WEBUI_SECRET_KEY      "$(gen_hex)"
 
 # Ente secrets — sized to match what museum's libsodium APIs decode to
 # (crypto_secretbox_KEYBYTES=32 for ENTE_MUSEUM_KEY, generichash_BYTES_MAX=64
@@ -250,7 +250,7 @@ Next steps:
      (The /signup/setup path is required only for the very first admin — visiting just / shows
      a login page that can't help you when no account exists yet.)
 
-  3. Wire OIDC into Jellyfin and onboard the first Ente user — see docs/ONBOARDING.md.
+  3. Wire OIDC into Jellyfin and Open WebUI, then onboard the first Ente user — see docs/ONBOARDING.md.
      (Ente Photos has no native OIDC; members onboard via email-OTT and store
      their Ente password in their Pocket-ID-SSO'd Vaultwarden vault.)
 EOF

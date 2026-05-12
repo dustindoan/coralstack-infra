@@ -3,13 +3,22 @@ services:
     image: ghcr.io/open-webui/open-webui:main
     container_name: open-webui
     restart: unless-stopped
+    # WEBUI_SECRET_KEY, OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET come from here.
+    env_file:
+      - path: .env
+        required: false
     volumes:
       - ${DATA_PATH:?DATA_PATH must be set — run ./setup.sh}/open-webui:/app/backend/data
     environment:
       # Ollama runs on the Mac mini, reachable via OPNsense OPT1 routing.
       # MAC_MINI_IP is set in the root .env (10.0.1.10 after Phase 4c).
       OLLAMA_BASE_URL: http://${MAC_MINI_IP:?MAC_MINI_IP must be set in .env — see docs/PROXMOX_MIGRATION.md Phase 4c}:11434
-      WEBUI_SECRET_KEY: ${OPEN_WEBUI_SECRET_KEY}
-      # Require login — members sign in with their Open WebUI account.
-      # Open WebUI supports OIDC: set OAUTH_* vars to wire into Pocket ID.
+      # Require login — members sign in via Pocket ID SSO.
       WEBUI_AUTH: "true"
+      # Pocket ID OIDC. Login button appears once OAUTH_CLIENT_ID is set in .env.
+      OAUTH_PROVIDER_NAME: Pocket ID
+      OPENID_PROVIDER_URL: https://id.${BASE_DOMAIN}/.well-known/openid-configuration
+      OAUTH_SCOPES: openid email profile
+      OAUTH_USERNAME_CLAIM: preferred_username
+      ENABLE_OAUTH_SIGNUP: "true"
+      OAUTH_MERGE_ACCOUNTS_BY_EMAIL: "true"

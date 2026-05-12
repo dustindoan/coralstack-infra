@@ -56,6 +56,19 @@ Jellyfin's OIDC support is via the [SSO plugin](https://github.com/9p4/jellyfin-
 | PKCE                 | enabled                                                          |
 | Allowed groups       | `members`                                                        |
 
+### Open WebUI
+
+Open WebUI uses standard OIDC — no plugin required. OIDC is enabled automatically once `OAUTH_CLIENT_ID` is non-empty in `services/open-webui/.env`.
+
+| Field                | Value                                                            |
+| -------------------- | ---------------------------------------------------------------- |
+| Name                 | Open WebUI                                                       |
+| Client Launch URL    | `https://ai.${BASE_DOMAIN}`                                      |
+| Callback URLs        | `https://ai.${BASE_DOMAIN}/oauth/oidc/callback`                  |
+| Logout callback URLs | `https://ai.${BASE_DOMAIN}`                                      |
+| PKCE                 | enabled                                                          |
+| Allowed groups       | `members`                                                        |
+
 ## 2. Paste the credentials into each service
 
 ### Vaultwarden
@@ -140,6 +153,22 @@ Admin → Plugins → SSO-Auth → Add Provider:
 
 The login URL becomes `https://media.${BASE_DOMAIN}/sso/OID/start/pocket-id` —
 add a link to it from the Jellyfin login page via the branding settings.
+
+### Open WebUI
+
+Edit `services/open-webui/.env` and paste the credentials from Pocket ID:
+
+```
+OAUTH_CLIENT_ID=<from Pocket ID>
+OAUTH_CLIENT_SECRET=<from Pocket ID>
+```
+
+Then:
+```bash
+docker compose up -d open-webui
+```
+
+The Pocket ID login button appears automatically on `https://ai.${BASE_DOMAIN}`. Members click **Sign in with Pocket ID**, authenticate, and their Open WebUI account is auto-provisioned on first login. Existing accounts (created before SSO was wired) are merged by email.
 
 ## 3. Ente Photos onboarding
 

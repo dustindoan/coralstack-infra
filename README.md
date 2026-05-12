@@ -73,3 +73,5 @@ to PUT to their own machine's `localhost:3200`.
 ## Status
 
 Early. Being built for a single NUC in Campbell River first. Expect breakage.
+
+See [docs/ROADMAP.md](docs/ROADMAP.md) for what's planned, in-flight, and deferred.

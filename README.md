@@ -31,8 +31,9 @@ cp .env.example .env
 
 `setup.sh` checks prereqs, generates per-service secrets, and brings the stack up.
 
-See [docs/QUICKSTART.md](docs/QUICKSTART.md) for the full first-run walkthrough and
-[docs/ONBOARDING.md](docs/ONBOARDING.md) for the OIDC wiring steps after first boot.
+See [docs/QUICKSTART.md](docs/QUICKSTART.md) for the full first-run walkthrough,
+[docs/ONBOARDING.md](docs/ONBOARDING.md) for the OIDC wiring steps after first boot,
+and [docs/RECOVERY.md](docs/RECOVERY.md) for the power-loss recovery test + runbook.
 
 ## Architecture
 

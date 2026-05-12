@@ -1,6 +1,9 @@
 services:
   open-webui:
-    image: ghcr.io/open-webui/open-webui:main
+    # Pin to a specific version (not :main) so `docker compose pull` doesn't
+    # silently swap in a new upstream build. Bump intentionally — review release
+    # notes at https://github.com/open-webui/open-webui/releases first.
+    image: ghcr.io/open-webui/open-webui:v0.9.5
     container_name: open-webui
     restart: unless-stopped
     # WEBUI_SECRET_KEY, OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET come from here.

@@ -31,6 +31,10 @@ Don't over-engineer migration paths within Phase 1.
 Single NUC, Campbell River, one admin. Get the service set stable and the household
 onto self-hosted infrastructure for real daily use.
 
+**Pre-public-launch punch list:** [docs/LAUNCH_BLOCKERS.md](LAUNCH_BLOCKERS.md) — the
+short-term tactical doc of what's between us and a public coralstack.org. References
+back into this roadmap and into memory for items that don't yet have docs.
+
 ### Service stack
 | Item | Status | Doc |
 | ---- | ------ | --- |

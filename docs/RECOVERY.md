@@ -63,9 +63,19 @@ Containers already have `restart: unless-stopped`, so Docker starting at boot = 
 | **Automatically log in as** `<admin user>`                         | System Settings → Users & Groups                     | Ollama is a user-level menu bar app; needs a logged-in session |
 | **Open at Login** includes Ollama                                  | System Settings → General → Login Items              | Starts Ollama after auto-login            |
 | **Start up automatically after a power failure**                   | System Settings → Energy                             | Mirrors the NUC's BIOS setting            |
-| `OLLAMA_HOST=0.0.0.0:11434`                                        | `launchctl setenv OLLAMA_HOST "0.0.0.0:11434"`       | Default loopback-only binding isn't reachable from the Apps VM |
+| `OLLAMA_HOST=0.0.0.0`, `OLLAMA_FLASH_ATTENTION=1`, `OLLAMA_KV_CACHE_TYPE=q8_0` | `~/Library/LaunchAgents/com.ollama.host.plist` (see [PROXMOX_MIGRATION.md](PROXMOX_MIGRATION.md) Phase 4c step 4) | Network binding + 8-bit KV cache. Set as a LaunchAgent so they persist across reboots |
 
-After setting `OLLAMA_HOST`, quit + relaunch Ollama from the menu bar (the env var is read at start). Verify from the Apps VM:
+After installing or modifying the LaunchAgent, restart Ollama so the new process inherits the env. **Don't use AppleScript `quit` over SSH** — it needs GUI permission and times out headless:
+
+```bash
+pkill -if 'Ollama.app' && pkill -ix ollama && sleep 2 && open -a Ollama
+
+# Confirm the running process actually has the vars (not just the launchd domain)
+NEW_PID=$(pgrep -x ollama | head -1)
+ps eww -p "$NEW_PID" | tr ' ' '\n' | grep -E 'OLLAMA_(FLASH_ATTENTION|KV_CACHE_TYPE|HOST)'
+```
+
+Then verify from the Apps VM:
 
 ```bash
 curl -fsS http://10.0.1.10:11434/api/tags

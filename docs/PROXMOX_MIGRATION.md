@@ -534,12 +534,13 @@ The reverse direction (Mac mini → Apps VM at `10.0.0.10`) won't work without a
 
 Install from [ollama.com](https://ollama.com/download) — the Mac app has built-in auto-update and ships the `ollama` CLI. Homebrew's CLI-only formula doesn't auto-update without manual `brew upgrade`.
 
-Configure four env vars via a LaunchAgent so the Ollama Mac app picks them up at every login:
+Configure five env vars via a LaunchAgent so the Ollama Mac app picks them up at every login:
 
 - `OLLAMA_HOST=0.0.0.0` — bind to all interfaces (default is loopback-only, unreachable from the Apps VM)
 - `OLLAMA_FLASH_ATTENTION=1` — prerequisite for KV cache quantization on Apple Silicon
 - `OLLAMA_KV_CACHE_TYPE=q8_0` — halves KV cache memory at long contexts, minimal quality cost
 - `OLLAMA_KEEP_ALIVE=-1` — keep models loaded indefinitely. Default 5min unload means a ~10s reload every time the chat goes idle; on dedicated inference hardware there's no reason to evict
+- `OLLAMA_NUM_PARALLEL=4` — allow 4 concurrent requests to batch through the model. Tuned for the late-cli agent orchestrator (ephemeral subagent pattern — multiple inference requests run in parallel). Trade-off: model's reported context window divides across slots, so each request gets `262144/4 = 65536` tokens. Adequate for most subagent tasks; if you find a workload needing single-request long-context, drop to `1` or `2`.
 
 **The race we're guarding against.** The Ollama Mac app registers itself as a macOS Login Item via SMAppService when its "Start Ollama on login" toggle is on (default). That means two things race at boot to start Ollama: this LaunchAgent (which sets env vars) and the Login Item (which launches the app). LaunchAgents in `~/Library/LaunchAgents/` with `RunAtLoad=true` fire during session bootstrap, *before* `loginwindow` processes Login Items, so the agent should reliably win — but macOS doesn't document this ordering, so we add a defensive self-heal: if the Login Item beats us, the agent detects the env-less Ollama process and restarts it.
 
@@ -552,6 +553,7 @@ launchctl setenv OLLAMA_HOST 0.0.0.0
 launchctl setenv OLLAMA_FLASH_ATTENTION 1
 launchctl setenv OLLAMA_KV_CACHE_TYPE q8_0
 launchctl setenv OLLAMA_KEEP_ALIVE -1
+launchctl setenv OLLAMA_NUM_PARALLEL 4
 
 # Defensive self-heal — if Login Item beat us, restart Ollama so it picks up env
 sleep 3

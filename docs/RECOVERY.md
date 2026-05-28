@@ -63,7 +63,7 @@ Containers already have `restart: unless-stopped`, so Docker starting at boot = 
 | **Automatically log in as** `<admin user>`                         | System Settings → Users & Groups                     | Ollama is a user-level menu bar app; needs a logged-in session |
 | **Open at Login** includes Ollama                                  | System Settings → General → Login Items              | Starts Ollama after auto-login            |
 | **Start up automatically after a power failure**                   | System Settings → Energy                             | Mirrors the NUC's BIOS setting            |
-| `OLLAMA_HOST=0.0.0.0`, `OLLAMA_FLASH_ATTENTION=1`, `OLLAMA_KV_CACHE_TYPE=q8_0` | `~/Library/LaunchAgents/com.ollama.host.plist` (see [PROXMOX_MIGRATION.md](PROXMOX_MIGRATION.md) Phase 4c step 4) | Network binding + 8-bit KV cache. Set as a LaunchAgent so they persist across reboots |
+| `OLLAMA_HOST=0.0.0.0`, `OLLAMA_FLASH_ATTENTION=1`, `OLLAMA_KV_CACHE_TYPE=q8_0` | `~/Library/LaunchAgents/com.ollama.host.{sh,plist}` (see [PROXMOX_MIGRATION.md](PROXMOX_MIGRATION.md) Phase 4c step 4) | Network binding + 8-bit KV cache. LaunchAgent persists across reboots and includes a self-heal block in case the Ollama Login Item wins the boot race |
 
 After installing or modifying the LaunchAgent, restart Ollama so the new process inherits the env. **Don't use AppleScript `quit` over SSH** — it needs GUI permission and times out headless:
 

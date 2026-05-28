@@ -540,10 +540,33 @@ Configure three env vars via a LaunchAgent so the Ollama Mac app picks them up a
 - `OLLAMA_FLASH_ATTENTION=1` — prerequisite for KV cache quantization on Apple Silicon
 - `OLLAMA_KV_CACHE_TYPE=q8_0` — halves KV cache memory at long contexts, minimal quality cost
 
-A single plist can't have multiple `ProgramArguments`, so wrap the three `setenv` calls in a `zsh -c` one-liner. Create `~/Library/LaunchAgents/com.ollama.host.plist`:
+**The race we're guarding against.** The Ollama Mac app registers itself as a macOS Login Item via SMAppService when its "Start Ollama on login" toggle is on (default). That means two things race at boot to start Ollama: this LaunchAgent (which sets env vars) and the Login Item (which launches the app). LaunchAgents in `~/Library/LaunchAgents/` with `RunAtLoad=true` fire during session bootstrap, *before* `loginwindow` processes Login Items, so the agent should reliably win — but macOS doesn't document this ordering, so we add a defensive self-heal: if the Login Item beats us, the agent detects the env-less Ollama process and restarts it.
+
+Create the helper script `~/Library/LaunchAgents/com.ollama.host.sh`:
 ```bash
 mkdir -p ~/Library/LaunchAgents      # may not exist on a fresh Mac mini
-cat > ~/Library/LaunchAgents/com.ollama.host.plist <<'PLIST'
+cat > ~/Library/LaunchAgents/com.ollama.host.sh <<'SH'
+#!/bin/zsh
+launchctl setenv OLLAMA_HOST 0.0.0.0
+launchctl setenv OLLAMA_FLASH_ATTENTION 1
+launchctl setenv OLLAMA_KV_CACHE_TYPE q8_0
+
+# Defensive self-heal — if Login Item beat us, restart Ollama so it picks up env
+sleep 3
+PID=$(pgrep -x ollama | head -1)
+if [ -n "$PID" ] && ! ps eww -p "$PID" | grep -q OLLAMA_KV_CACHE_TYPE; then
+  pkill -if 'Ollama.app' 2>/dev/null
+  pkill -ix ollama 2>/dev/null
+  sleep 2
+  open -a Ollama
+fi
+SH
+chmod +x ~/Library/LaunchAgents/com.ollama.host.sh
+```
+
+Create the plist that invokes it. A single plist can't have multiple `ProgramArguments`, hence the script-file indirection:
+```bash
+cat > ~/Library/LaunchAgents/com.ollama.host.plist <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -552,27 +575,22 @@ cat > ~/Library/LaunchAgents/com.ollama.host.plist <<'PLIST'
     <key>ProgramArguments</key>
     <array>
       <string>/bin/zsh</string>
-      <string>-c</string>
-      <string>launchctl setenv OLLAMA_HOST 0.0.0.0; launchctl setenv OLLAMA_FLASH_ATTENTION 1; launchctl setenv OLLAMA_KV_CACHE_TYPE q8_0</string>
+      <string>$HOME/Library/LaunchAgents/com.ollama.host.sh</string>
     </array>
     <key>RunAtLoad</key><true/>
   </dict>
 </plist>
 PLIST
 ```
+
 Bootstrap it into the GUI launchd domain (the legacy `launchctl load` no longer runs `RunAtLoad` reliably on modern macOS):
 ```bash
+launchctl bootout gui/$(id -u)/com.ollama.host 2>/dev/null   # only if replacing
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.ollama.host.plist
-launchctl getenv OLLAMA_KV_CACHE_TYPE   # should print q8_0
+launchctl kickstart -k gui/$(id -u)/com.ollama.host          # simulate fresh login
 ```
-Restart Ollama so the new server process inherits the env. **Don't use `osascript -e 'quit app "Ollama"'` over SSH** — it needs Automation permission you can't grant headless. Kill both the menu-bar wrapper and the server child directly:
-```bash
-pkill -if 'Ollama.app'      # menu-bar wrapper
-pkill -ix ollama            # server child
-sleep 2
-open -a Ollama
-```
-Verify the env vars actually made it into the *running* process (the launchd domain having them isn't enough — the process must have been spawned after they were set):
+
+Verify the env vars actually made it into the *running* Ollama process (the launchd domain having them isn't enough — the process must have been spawned after they were set):
 ```bash
 NEW_PID=$(pgrep -x ollama | head -1)
 ps eww -p "$NEW_PID" | tr ' ' '\n' | grep -E 'OLLAMA_(FLASH_ATTENTION|KV_CACHE_TYPE|HOST)'
@@ -581,7 +599,8 @@ ps eww -p "$NEW_PID" | tr ' ' '\n' | grep -E 'OLLAMA_(FLASH_ATTENTION|KV_CACHE_T
 #   OLLAMA_FLASH_ATTENTION=1
 #   OLLAMA_KV_CACHE_TYPE=q8_0
 ```
-macOS Firewall will prompt to allow incoming connections on first launch — allow it. (On a headless box, do this once with a monitor attached, or pre-allow via `socketfilterfw`.)
+
+macOS Firewall will prompt to allow incoming connections on first launch — allow it with a monitor attached during initial setup. (Pre-allowing via `socketfilterfw` from CLI is possible but fragile across Ollama auto-updates that re-sign the binary.)
 
 **Optional: raise the GPU wired-memory cap.** Apple Silicon defaults to ~75% of unified RAM for GPU use. For 48GB Mac mini that's ~36GB, plenty for any Qwen 3.6 size. Only worth raising if you're running long-context (256K+) where KV cache grows large:
 ```bash

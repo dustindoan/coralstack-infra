@@ -63,7 +63,7 @@ Containers already have `restart: unless-stopped`, so Docker starting at boot = 
 | **Automatically log in as** `<admin user>`                         | System Settings → Users & Groups                     | Ollama is a user-level menu bar app; needs a logged-in session |
 | **Open at Login** includes Ollama                                  | System Settings → General → Login Items              | Starts Ollama after auto-login            |
 | **Start up automatically after a power failure**                   | System Settings → Energy                             | Mirrors the NUC's BIOS setting            |
-| `OLLAMA_HOST=0.0.0.0`, `OLLAMA_FLASH_ATTENTION=1`, `OLLAMA_KV_CACHE_TYPE=q8_0`, `OLLAMA_KEEP_ALIVE=-1`, `OLLAMA_NUM_PARALLEL=4` | `~/Library/LaunchAgents/com.ollama.host.{sh,plist}` (see [PROXMOX_MIGRATION.md](PROXMOX_MIGRATION.md) Phase 4c step 4) | Network binding + 8-bit KV cache + keep model loaded indefinitely + 4-way concurrent request batching (late-cli subagents). LaunchAgent persists across reboots and includes a self-heal block in case the Ollama Login Item wins the boot race |
+| `OLLAMA_HOST=0.0.0.0`, `OLLAMA_FLASH_ATTENTION=1`, `OLLAMA_KV_CACHE_TYPE=q8_0`, `OLLAMA_KEEP_ALIVE=-1`, `OLLAMA_NUM_PARALLEL=2` | `~/Library/LaunchAgents/com.ollama.host.{sh,plist}` (see [PROXMOX_MIGRATION.md](PROXMOX_MIGRATION.md) Phase 4c step 4) | Network binding + 8-bit KV cache + keep model loaded indefinitely + 2-way concurrency (131072 tokens/slot; avoids KV-cache slot eviction / cold re-prefills on large agent conversations). LaunchAgent persists across reboots and includes a self-heal block in case the Ollama Login Item wins the boot race |
 
 After installing or modifying the LaunchAgent, restart Ollama so the new process inherits the env. **Don't use AppleScript `quit` over SSH** — it needs GUI permission and times out headless:
 
@@ -82,6 +82,8 @@ curl -fsS http://10.0.1.10:11434/api/tags
 ```
 
 Should return a JSON list of installed models.
+
+> **Changing a value later (vs. a fresh install).** Editing `com.ollama.host.sh` only takes effect at the next login/reboot, when the LaunchAgent re-runs in the GUI (Aqua) domain. Over SSH, `launchctl setenv` targets the wrong launchd domain and **won't** reach the running app — so to apply a changed value live, either run `launchctl setenv` from a terminal **in the Mac mini's GUI session** and then restart Ollama, or just reboot.
 
 ## Pre-flight: eero
 

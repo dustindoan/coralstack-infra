@@ -47,6 +47,8 @@ In Pocket ID's admin UI, go to **OIDC Clients** → **Add Client** for each serv
 
 Jellyfin's OIDC support is via the [SSO plugin](https://github.com/9p4/jellyfin-plugin-sso). `setup.sh` pre-seeds the plugin into the Jellyfin config volume on first run, so you should see it under Admin → Dashboard → Plugins on first boot without any manual install. If you don't, restart Jellyfin once (`docker compose restart jellyfin`) or check `setup.sh` output for errors.
 
+Unlike the other services, you **don't configure the SSO plugin in its UI** — `setup.sh` renders the whole provider config (`SSO-Auth.xml`) from `services/jellyfin/SSO-Auth.xml.template`, with the permission defaults baked in: **`admins` group → Jellyfin administrator, `members` group → normal user, and Live TV access on for everyone**. Avoid hand-editing it in the SSO UI — a re-render clobbers UI changes (and the UI's provider form has a footgun where saving under the wrong name appends a dead duplicate provider). To change a default, edit the template and re-render.
+
 | Field                | Value                                                            |
 | -------------------- | ---------------------------------------------------------------- |
 | Name                 | Jellyfin                                                         |
@@ -55,6 +57,13 @@ Jellyfin's OIDC support is via the [SSO plugin](https://github.com/9p4/jellyfin-
 | Logout callback URLs | `https://media.${BASE_DOMAIN}`                                   |
 | PKCE                 | enabled                                                          |
 | Allowed groups       | `members`                                                        |
+
+Then paste the returned `client_id`/`client_secret` into `services/jellyfin/.env`
+(`JELLYFIN_OIDC_CLIENT_ID` / `JELLYFIN_OIDC_CLIENT_SECRET`) and re-run `./setup.sh`.
+It renders `SSO-Auth.xml` into the Jellyfin config volume and restarts Jellyfin —
+the **Sign in with Pocket ID** button and Live TV access then appear after you log
+in. (The render is skip-if-exists; to pick up template changes later, remove the
+file first: `docker exec jellyfin rm /config/plugins/configurations/SSO-Auth.xml`.)
 
 ### Open WebUI
 

@@ -7,6 +7,7 @@ include:
   - services/vaultwarden/docker-compose.yml
   - services/ente/docker-compose.yml
   - services/jellyfin/docker-compose.yml
+  - services/dispatcharr/docker-compose.yml
   - services/open-webui/docker-compose.yml
 
 # The project's default network is named `coralstack`. Every service in this

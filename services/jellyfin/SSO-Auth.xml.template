@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  CoralStack: jellyfin-plugin-sso provider config. setup.sh renders this template
+  (envsubst) into <DATA_PATH>/jellyfin/config/plugins/configurations/SSO-Auth.xml
+  so Jellyfin's Pocket ID SSO + permissions are declarative, not hand-clicked.
+
+  Substituted vars:
+    BASE_DOMAIN                 (root .env)
+    JELLYFIN_OIDC_CLIENT_ID     (services/jellyfin/.env — after registering the
+    JELLYFIN_OIDC_CLIENT_SECRET  Jellyfin client in Pocket ID; see docs/ONBOARDING.md)
+
+  Permission defaults are baked in on purpose — DON'T hand-toggle them in the SSO
+  plugin UI; a re-render clobbers UI edits (same as Ente's museum.yaml). To change
+  a default, edit it here and re-render. Defaults:
+    - admins group  → Jellyfin administrator (AdminRoles)
+    - members group → normal user (Roles)
+    - Live TV access on for all authenticated users (EnableLiveTv=true)
+
+  SCHEMA IS COUPLED TO THE PLUGIN VERSION (JELLYFIN_SSO_VERSION in setup.sh).
+  Re-verify this template against a freshly-saved config when you bump that pin.
+-->
+<PluginConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <SamlConfigs />
+  <OidConfigs>
+    <item>
+      <key>
+        <string>pocket-id</string>
+      </key>
+      <value>
+        <PluginConfiguration>
+          <OidEndpoint>https://id.${BASE_DOMAIN}</OidEndpoint>
+          <OidClientId>${JELLYFIN_OIDC_CLIENT_ID}</OidClientId>
+          <OidSecret>${JELLYFIN_OIDC_CLIENT_SECRET}</OidSecret>
+          <Enabled>true</Enabled>
+          <EnableAuthorization>true</EnableAuthorization>
+          <EnableAllFolders>true</EnableAllFolders>
+          <EnabledFolders />
+          <AdminRoles>
+            <string>admins</string>
+          </AdminRoles>
+          <Roles>
+            <string>members</string>
+          </Roles>
+          <EnableFolderRoles>false</EnableFolderRoles>
+          <EnableLiveTvRoles>false</EnableLiveTvRoles>
+          <EnableLiveTv>true</EnableLiveTv>
+          <EnableLiveTvManagement>false</EnableLiveTvManagement>
+          <LiveTvRoles />
+          <LiveTvManagementRoles />
+          <FolderRoleMappings />
+          <RoleClaim>groups</RoleClaim>
+          <OidScopes>
+            <string>groups</string>
+          </OidScopes>
+          <SchemeOverride>https</SchemeOverride>
+          <PortOverride xsi:nil="true" />
+          <NewPath>true</NewPath>
+          <CanonicalLinks />
+          <DisableHttps>false</DisableHttps>
+          <DisablePushedAuthorization>false</DisablePushedAuthorization>
+          <DoNotValidateEndpoints>false</DoNotValidateEndpoints>
+          <DoNotValidateIssuerName>false</DoNotValidateIssuerName>
+          <DoNotLoadProfile>false</DoNotLoadProfile>
+        </PluginConfiguration>
+      </value>
+    </item>
+  </OidConfigs>
+</PluginConfiguration>

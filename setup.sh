@@ -152,6 +152,7 @@ init_service_env vaultwarden
 init_service_env ente
 init_service_env open-webui
 init_service_env dispatcharr
+init_service_env jellyfin
 
 fill_secret services/pocket-id/.env   ENCRYPTION_KEY      "$(gen_hex)"
 fill_secret services/vaultwarden/.env ADMIN_TOKEN         "$(gen_base64)"
@@ -232,6 +233,49 @@ if grep -qE '^\s*-\s*services/jellyfin/' docker-compose.yml && [[ ! -d "$jellyfi
 	unzip -q -o "$tmp_zip" -d "$jellyfin_plugin_dir"
 	rm -f "$tmp_zip"
 	log "Plugin staged at $jellyfin_plugin_dir"
+fi
+
+# ─── Jellyfin SSO plugin config (render) ─────────────────────────────────────
+# Render the SSO provider config from template so Pocket ID SSO + permissions
+# (admins→admin, members→user, Live TV on) are declarative instead of hand-
+# clicked in the plugin UI. Needs the OIDC client id/secret from Pocket ID, so
+# this no-ops on first boot and renders on a later re-run once
+# services/jellyfin/.env is filled. Skip-if-exists so it never clobbers a config
+# carrying runtime user links or intentional UI edits.
+jellyfin_sso_template="services/jellyfin/SSO-Auth.xml.template"
+jellyfin_sso_host="$DATA_PATH/jellyfin/config/plugins/configurations/SSO-Auth.xml"
+jellyfin_sso_ctr="/config/plugins/configurations/SSO-Auth.xml"
+
+if grep -qE '^\s*-\s*services/jellyfin/' docker-compose.yml && [[ -f "$jellyfin_sso_template" && -f services/jellyfin/.env ]]; then
+	# shellcheck disable=SC1091
+	set -a; source services/jellyfin/.env; set +a
+	if [[ -z "${JELLYFIN_OIDC_CLIENT_ID:-}" || -z "${JELLYFIN_OIDC_CLIENT_SECRET:-}" ]]; then
+		warn "Jellyfin SSO config not rendered: set JELLYFIN_OIDC_CLIENT_ID/SECRET in services/jellyfin/.env"
+		warn "(register Jellyfin in Pocket ID — see docs/ONBOARDING.md §1 — then re-run ./setup.sh)"
+	elif [[ -f "$jellyfin_sso_host" ]]; then
+		log "Jellyfin SSO config already present — leaving as-is."
+		log "  To re-render from template: docker exec jellyfin rm $jellyfin_sso_ctr, then re-run ./setup.sh"
+	else
+		log "Rendering Jellyfin SSO config from template"
+		jellyfin_sso_rendered="$(mktemp)"
+		envsubst '$BASE_DOMAIN $JELLYFIN_OIDC_CLIENT_ID $JELLYFIN_OIDC_CLIENT_SECRET' \
+			< "$jellyfin_sso_template" > "$jellyfin_sso_rendered"
+		if docker ps -a --format '{{.Names}}' | grep -qx jellyfin; then
+			# Once Jellyfin has run, this dir is root-owned — write through the
+			# container (setup.sh runs as the non-root admin) so we don't hit EACCES.
+			docker exec jellyfin mkdir -p /config/plugins/configurations
+			docker cp "$jellyfin_sso_rendered" "jellyfin:$jellyfin_sso_ctr"
+			if docker ps --format '{{.Names}}' | grep -qx jellyfin; then
+				log "Restarting Jellyfin to load the rendered SSO config"
+				docker restart jellyfin >/dev/null
+			fi
+		else
+			# Pre-first-boot: no container yet, host path is admin-owned.
+			mkdir -p "$(dirname "$jellyfin_sso_host")"
+			cp "$jellyfin_sso_rendered" "$jellyfin_sso_host"
+		fi
+		rm -f "$jellyfin_sso_rendered"
+	fi
 fi
 
 # ─── Bring it up ─────────────────────────────────────────────────────────────

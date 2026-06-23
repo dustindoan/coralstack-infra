@@ -113,13 +113,15 @@ host, taking the whole stack offline for a few minutes.
    shows `renderD128`. (The Jellyfin image bundles its own ffmpeg + Intel drivers, so
    nothing extra is needed inside the guest.)
 
-9. **Enable HW accel in Jellyfin:** Dashboard → Playback → Transcoding →
-   - Hardware acceleration: **Intel QuickSync (QSV)** (VAAPI also works)
-   - Device: `/dev/dri/renderD128`
-   - Enable HW decoding for H264, HEVC, VP9; enable HW encoding.
-
-   (This is stored in `encoding.xml`. Once validated, it's a candidate to template the
-   same way `SSO-Auth.xml` is — see [ONBOARDING.md](ONBOARDING.md) — so it's reproducible.)
+9. **Hardware acceleration — now templated, no UI click needed.** When
+   `docker-compose.override.yml` exists, `setup.sh` writes the VAAPI transcode config
+   from `services/jellyfin/encoding.xml.template` into the Jellyfin config volume
+   (skip-if-exists; `docker exec jellyfin rm /config/config/encoding.xml` + re-run to
+   re-apply). If you ever set it in the UI instead: Dashboard → Playback → Transcoding →
+   - Hardware acceleration: **VAAPI** — *not* Intel QuickSync. **QSV fails on this
+     Kaby Lake iGPU** (`Function not implemented`); VAAPI works (H.264 + HEVC encode,
+     verified ~7.6× realtime, and Jellyfin confirmed using `h264_vaapi`/`hevc_vaapi`).
+   - Device: `/dev/dri/renderD128`; enable HW decoding (H264/HEVC/VP9/VC1/MPEG2) + HW encoding.
 
 ## Verify
 

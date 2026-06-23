@@ -42,6 +42,7 @@ back into this roadmap and into memory for items that don't yet have docs.
 | Vaultwarden | ✅ deployed (SSO via Timshel fork) | [ONBOARDING.md](ONBOARDING.md) |
 | Ente Photos | ✅ deployed | [ONBOARDING.md](ONBOARDING.md) |
 | Jellyfin | ✅ deployed | [ONBOARDING.md](ONBOARDING.md) |
+| Dispatcharr (IPTV → Jellyfin Live TV) | ✅ deployed (admin-plane) | [services/dispatcharr](../services/dispatcharr/docker-compose.yml), [ADMIN_ACCESS.md](ADMIN_ACCESS.md) |
 | Open WebUI | ✅ deployed (Ollama on Mac mini) | [PROXMOX_MIGRATION.md](PROXMOX_MIGRATION.md) Phase 4c |
 | TubeArchivist | 🚧 in progress | (this branch) |
 
@@ -70,6 +71,7 @@ again" makes backups non-negotiable.
 | Item | Status | Doc |
 | ---- | ------ | --- |
 | Headscale (self-hosted tailnet) | 📋 specced | [HEADSCALE.md](HEADSCALE.md) |
+| Admin front door (Homepage dashboard + admin-SSO) | 💭 captured, not built | [memory](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_admin_dashboard.md) — 3 layers: Homepage / Headscale reachability / forward_auth gate. Proxmox-OIDC + Dispatcharr#806 noted |
 | Backup strategy implementation | 📋 specced in memory | TBD — promote [memory](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_backup_strategy.md) to `BACKUPS.md` |
 | Observability (Grafana/Loki) | 💭 not specced | TBD |
 

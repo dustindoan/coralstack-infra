@@ -1,15 +1,64 @@
 services:
+  # ── VPN egress sidecar ──────────────────────────────────────────────────────
+  # Dispatcharr opens connections straight to the IPTV provider. Without this,
+  # those egress from the apps VM's residential WAN — exposing the home IP to the
+  # provider and the IPTV traffic to the ISP. Gluetun holds an ExpressVPN tunnel
+  # (OpenVPN) with a built-in kill-switch, and Dispatcharr shares its network
+  # namespace (network_mode: service:dispatcharr-vpn below), so ONLY Dispatcharr's
+  # traffic leaves through the VPN. The rest of the stack is untouched — routing
+  # the whole box through a commercial VPN would break Caddy inbound + DNS-01.
+  #
+  # Credentials are NOT your normal ExpressVPN login: get the OpenVPN username +
+  # password from expressvpn.com → Advanced Setup → Manual Configuration. They,
+  # plus SERVER_COUNTRIES, are injected from services/dispatcharr/.env (env_file).
+  dispatcharr-vpn:
+    image: qmcgaw/gluetun:v3.41.1
+    container_name: dispatcharr-vpn
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    # OPENVPN_USER, OPENVPN_PASSWORD, SERVER_COUNTRIES come from here. Compose
+    # ${...} interpolation only reads the root .env, so per-service secrets are
+    # injected via env_file (same pattern as services/open-webui).
+    env_file:
+      - path: .env
+        required: false
+    # This container owns Dispatcharr's published port (see network_mode below).
+    # Admin-plane: bind to loopback only — no Caddy route/alias. Reach via:
+    #   ssh -L 9191:localhost:9191 coralstack-apps
+    ports:
+      - "127.0.0.1:9191:9191"
+    environment:
+      VPN_SERVICE_PROVIDER: expressvpn
+      # OpenVPN is ExpressVPN's protocol for manual configs (Lightway isn't
+      # supported by Gluetun), so no WireGuard needed here. To move to Proton
+      # later: VPN_SERVICE_PROVIDER=protonvpn + VPN_TYPE=wireguard + a key.
+      VPN_TYPE: openvpn
+      # Kill-switch allows replies to the coralstack Docker subnet so Jellyfin
+      # (dispatcharr-vpn:9191) and the loopback admin tunnel reach the web UI
+      # without being forced through the tunnel. = `docker network inspect
+      # coralstack` subnet.
+      FIREWALL_OUTBOUND_SUBNETS: 172.18.0.0/16
+      TZ: ${TZ}
+    networks:
+      - default
+
+  # ── Dispatcharr (IPTV manager) ──────────────────────────────────────────────
   dispatcharr:
     image: ghcr.io/dispatcharr/dispatcharr:latest
     container_name: dispatcharr
     restart: unless-stopped
-    # Admin-plane: the entire web UI is operator-only (channel curation, provider
-    # config, EPG matching). Members watch Live TV inside Jellyfin and never touch
-    # this. Per docs/ADMIN_ACCESS.md "The rule", bind to loopback — no Caddy route,
-    # no subdomain, no network alias. Reach via:
-    #   ssh -L 9191:localhost:9191 coralstack-apps
-    ports:
-      - "127.0.0.1:9191:9191"
+    # Share the VPN sidecar's network namespace: all of Dispatcharr's traffic
+    # egresses through the tunnel, and its web UI is published via the sidecar's
+    # ports above. Note: a container using network_mode: service:* CANNOT also
+    # join the coralstack network — reachability comes from the sidecar, which is
+    # on it. Jellyfin's Live TV tuner URL is http://dispatcharr-vpn:9191/...
+    network_mode: "service:dispatcharr-vpn"
+    depends_on:
+      dispatcharr-vpn:
+        condition: service_healthy
     environment:
       TZ: ${TZ}
     volumes:

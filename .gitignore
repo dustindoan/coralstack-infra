@@ -1,5 +1,6 @@
 .env
 services/*/.env
+services/*/*.ovpn
 data/
 *.log
 .DS_Store

@@ -8,9 +8,18 @@ services:
   # traffic leaves through the VPN. The rest of the stack is untouched — routing
   # the whole box through a commercial VPN would break Caddy inbound + DNS-01.
   #
-  # Credentials are NOT your normal ExpressVPN login: get the OpenVPN username +
-  # password from expressvpn.com → Advanced Setup → Manual Configuration. They,
-  # plus SERVER_COUNTRIES, are injected from services/dispatcharr/.env (env_file).
+  # ExpressVPN uses Gluetun's *custom* OpenVPN mode, NOT the built-in `expressvpn`
+  # provider: ExpressVPN's servers require a tls-crypt key that's embedded in the
+  # downloaded .ovpn but absent from Gluetun's built-in profile, so the built-in
+  # provider fails the TLS handshake on every server (gluetun#3224 / #3256). The
+  # mounted expressvpn.ovpn carries the correct CA + tls-crypt key.
+  #
+  # Get both pieces from expressvpn.com → Advanced Setup → Manual Configuration → OpenVPN:
+  #   - the OpenVPN username + password (NOT your account login) → services/dispatcharr/.env
+  #   - a server .ovpn for your chosen location → services/dispatcharr/expressvpn.ovpn (gitignored)
+  #
+  # When migrating to Proton later this custom-config hack goes away: Proton has
+  # clean native support — VPN_SERVICE_PROVIDER=protonvpn + VPN_TYPE=wireguard + a key.
   dispatcharr-vpn:
     image: qmcgaw/gluetun:v3.41.1
     container_name: dispatcharr-vpn
@@ -19,23 +28,25 @@ services:
       - NET_ADMIN
     devices:
       - /dev/net/tun:/dev/net/tun
-    # OPENVPN_USER, OPENVPN_PASSWORD, SERVER_COUNTRIES come from here. Compose
-    # ${...} interpolation only reads the root .env, so per-service secrets are
-    # injected via env_file (same pattern as services/open-webui).
+    # OPENVPN_USER, OPENVPN_PASSWORD come from here. Compose ${...} interpolation
+    # only reads the root .env, so per-service secrets are injected via env_file
+    # (same pattern as services/open-webui).
     env_file:
       - path: .env
         required: false
+    volumes:
+      # The ExpressVPN server config (CA + tls-crypt key + endpoint). Gitignored;
+      # the chosen egress location is whichever .ovpn you downloaded.
+      - ./expressvpn.ovpn:/gluetun/custom.ovpn:ro
     # This container owns Dispatcharr's published port (see network_mode below).
     # Admin-plane: bind to loopback only — no Caddy route/alias. Reach via:
     #   ssh -L 9191:localhost:9191 coralstack-apps
     ports:
       - "127.0.0.1:9191:9191"
     environment:
-      VPN_SERVICE_PROVIDER: expressvpn
-      # OpenVPN is ExpressVPN's protocol for manual configs (Lightway isn't
-      # supported by Gluetun), so no WireGuard needed here. To move to Proton
-      # later: VPN_SERVICE_PROVIDER=protonvpn + VPN_TYPE=wireguard + a key.
+      VPN_SERVICE_PROVIDER: custom
       VPN_TYPE: openvpn
+      OPENVPN_CUSTOM_CONFIG: /gluetun/custom.ovpn
       # Kill-switch allows replies to the coralstack Docker subnet so Jellyfin
       # (dispatcharr-vpn:9191) and the loopback admin tunnel reach the web UI
       # without being forced through the tunnel. = `docker network inspect

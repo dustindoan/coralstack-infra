@@ -151,6 +151,7 @@ init_service_env pocket-id
 init_service_env vaultwarden
 init_service_env ente
 init_service_env open-webui
+init_service_env dispatcharr
 
 fill_secret services/pocket-id/.env   ENCRYPTION_KEY      "$(gen_hex)"
 fill_secret services/vaultwarden/.env ADMIN_TOKEN         "$(gen_base64)"

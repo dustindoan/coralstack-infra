@@ -1,15 +1,89 @@
 services:
+  # ── VPN egress sidecar ──────────────────────────────────────────────────────
+  # Dispatcharr opens connections straight to the IPTV provider. Without this,
+  # those egress from the apps VM's residential WAN — exposing the home IP to the
+  # provider and the IPTV traffic to the ISP. Gluetun holds an ExpressVPN tunnel
+  # (OpenVPN) with a built-in kill-switch, and Dispatcharr shares its network
+  # namespace (network_mode: service:dispatcharr-vpn below), so ONLY Dispatcharr's
+  # traffic leaves through the VPN. The rest of the stack is untouched — routing
+  # the whole box through a commercial VPN would break Caddy inbound + DNS-01.
+  #
+  # ExpressVPN uses Gluetun's *custom* OpenVPN mode, NOT the built-in `expressvpn`
+  # provider: ExpressVPN's servers require a tls-crypt key that's embedded in the
+  # downloaded .ovpn but absent from Gluetun's built-in profile, so the built-in
+  # provider fails the TLS handshake on every server (gluetun#3224 / #3256). The
+  # mounted expressvpn.ovpn carries the correct CA + tls-crypt key.
+  #
+  # Get both pieces from expressvpn.com → Advanced Setup → Manual Configuration → OpenVPN:
+  #   - the OpenVPN username + password (NOT your account login) → services/dispatcharr/.env
+  #   - a server .ovpn for your chosen location → services/dispatcharr/expressvpn.ovpn (gitignored)
+  # GOTCHA: Gluetun's custom parser rejects a hostname in the .ovpn `remote` line
+  # (gluetun#2769; upstream fix tracked in passteque/gluetun#788 — maintainer ETA
+  # ~3-6 months from late 2026, after which this patch is unnecessary). After
+  # downloading, replace the hostname with its resolved IP:
+  #   host=$(awk '/^remote /{print $2; exit}' expressvpn.ovpn); ip=$(getent hosts "$host" | awk '{print $1; exit}')
+  #   sed -i "s|^remote $host |remote $ip |" expressvpn.ovpn
+  # Re-do this whenever you swap in a new .ovpn (the IP may also rotate over time).
+  # Also: do NOT set SERVER_COUNTRIES/CITIES — custom mode rejects server selection.
+  #
+  # FAIL-CLOSED: Dispatcharr shares this container's netns and Gluetun's firewall
+  # default-drops all non-tunnel egress (kill-switch). If the tunnel drops, the
+  # IPTV traffic is BLOCKED, not rerouted to the residential WAN — no leak. And
+  # Dispatcharr can't start at all unless this container exists. See the VPN
+  # troubleshooting notes in the memory for diagnosis if Live TV stops.
+  #
+  # When migrating to Proton later this custom-config hack goes away: Proton has
+  # clean native support — VPN_SERVICE_PROVIDER=protonvpn + VPN_TYPE=wireguard + a key.
+  dispatcharr-vpn:
+    image: qmcgaw/gluetun:v3.41.1
+    container_name: dispatcharr-vpn
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    # OPENVPN_USER, OPENVPN_PASSWORD come from here. Compose ${...} interpolation
+    # only reads the root .env, so per-service secrets are injected via env_file
+    # (same pattern as services/open-webui).
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      # The ExpressVPN server config (CA + tls-crypt key + endpoint). Gitignored;
+      # the chosen egress location is whichever .ovpn you downloaded.
+      - ./expressvpn.ovpn:/gluetun/custom.ovpn:ro
+    # This container owns Dispatcharr's published port (see network_mode below).
+    # Admin-plane: bind to loopback only — no Caddy route/alias. Reach via:
+    #   ssh -L 9191:localhost:9191 coralstack-apps
+    ports:
+      - "127.0.0.1:9191:9191"
+    environment:
+      VPN_SERVICE_PROVIDER: custom
+      VPN_TYPE: openvpn
+      OPENVPN_CUSTOM_CONFIG: /gluetun/custom.ovpn
+      # Kill-switch allows replies to the coralstack Docker subnet so Jellyfin
+      # (dispatcharr-vpn:9191) and the loopback admin tunnel reach the web UI
+      # without being forced through the tunnel. = `docker network inspect
+      # coralstack` subnet.
+      FIREWALL_OUTBOUND_SUBNETS: 172.18.0.0/16
+      TZ: ${TZ}
+    networks:
+      - default
+
+  # ── Dispatcharr (IPTV manager) ──────────────────────────────────────────────
   dispatcharr:
     image: ghcr.io/dispatcharr/dispatcharr:latest
     container_name: dispatcharr
     restart: unless-stopped
-    # Admin-plane: the entire web UI is operator-only (channel curation, provider
-    # config, EPG matching). Members watch Live TV inside Jellyfin and never touch
-    # this. Per docs/ADMIN_ACCESS.md "The rule", bind to loopback — no Caddy route,
-    # no subdomain, no network alias. Reach via:
-    #   ssh -L 9191:localhost:9191 coralstack-apps
-    ports:
-      - "127.0.0.1:9191:9191"
+    # Share the VPN sidecar's network namespace: all of Dispatcharr's traffic
+    # egresses through the tunnel, and its web UI is published via the sidecar's
+    # ports above. Note: a container using network_mode: service:* CANNOT also
+    # join the coralstack network — reachability comes from the sidecar, which is
+    # on it. Jellyfin's Live TV tuner URL is http://dispatcharr-vpn:9191/...
+    network_mode: "service:dispatcharr-vpn"
+    depends_on:
+      dispatcharr-vpn:
+        condition: service_healthy
     environment:
       TZ: ${TZ}
     volumes:

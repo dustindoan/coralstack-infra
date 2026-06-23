@@ -18,11 +18,19 @@ services:
   #   - the OpenVPN username + password (NOT your account login) → services/dispatcharr/.env
   #   - a server .ovpn for your chosen location → services/dispatcharr/expressvpn.ovpn (gitignored)
   # GOTCHA: Gluetun's custom parser rejects a hostname in the .ovpn `remote` line
-  # (gluetun#2769). After downloading, replace the hostname with its resolved IP:
+  # (gluetun#2769; upstream fix tracked in passteque/gluetun#788 — maintainer ETA
+  # ~3-6 months from late 2026, after which this patch is unnecessary). After
+  # downloading, replace the hostname with its resolved IP:
   #   host=$(awk '/^remote /{print $2; exit}' expressvpn.ovpn); ip=$(getent hosts "$host" | awk '{print $1; exit}')
   #   sed -i "s|^remote $host |remote $ip |" expressvpn.ovpn
   # Re-do this whenever you swap in a new .ovpn (the IP may also rotate over time).
   # Also: do NOT set SERVER_COUNTRIES/CITIES — custom mode rejects server selection.
+  #
+  # FAIL-CLOSED: Dispatcharr shares this container's netns and Gluetun's firewall
+  # default-drops all non-tunnel egress (kill-switch). If the tunnel drops, the
+  # IPTV traffic is BLOCKED, not rerouted to the residential WAN — no leak. And
+  # Dispatcharr can't start at all unless this container exists. See the VPN
+  # troubleshooting notes in the memory for diagnosis if Live TV stops.
   #
   # When migrating to Proton later this custom-config hack goes away: Proton has
   # clean native support — VPN_SERVICE_PROVIDER=protonvpn + VPN_TYPE=wireguard + a key.

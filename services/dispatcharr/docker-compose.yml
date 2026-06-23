@@ -17,6 +17,12 @@ services:
   # Get both pieces from expressvpn.com → Advanced Setup → Manual Configuration → OpenVPN:
   #   - the OpenVPN username + password (NOT your account login) → services/dispatcharr/.env
   #   - a server .ovpn for your chosen location → services/dispatcharr/expressvpn.ovpn (gitignored)
+  # GOTCHA: Gluetun's custom parser rejects a hostname in the .ovpn `remote` line
+  # (gluetun#2769). After downloading, replace the hostname with its resolved IP:
+  #   host=$(awk '/^remote /{print $2; exit}' expressvpn.ovpn); ip=$(getent hosts "$host" | awk '{print $1; exit}')
+  #   sed -i "s|^remote $host |remote $ip |" expressvpn.ovpn
+  # Re-do this whenever you swap in a new .ovpn (the IP may also rotate over time).
+  # Also: do NOT set SERVER_COUNTRIES/CITIES — custom mode rejects server selection.
   #
   # When migrating to Proton later this custom-config hack goes away: Proton has
   # clean native support — VPN_SERVICE_PROVIDER=protonvpn + VPN_TYPE=wireguard + a key.

@@ -12,6 +12,15 @@ services:
       nofile:
         soft: 65536
         hard: 65536
+    # GPU hardware transcoding (Intel Quick Sync) is NOT wired yet — Jellyfin
+    # software-transcodes on CPU today. Enabling it needs the NUC iGPU passed
+    # through to this VM first (VFIO, a maintenance-window task). Once /dev/dri
+    # exists in the VM, uncomment the block below (set the render GID from the VM:
+    # `getent group render | cut -d: -f3`). Full procedure: docs/GPU_TRANSCODING.md.
+    # devices:
+    #   - /dev/dri:/dev/dri
+    # group_add:
+    #   - "993"   # render GID on the apps VM — verify, don't assume
     environment:
       TZ: ${TZ}
       JELLYFIN_PublishedServerUrl: https://media.${BASE_DOMAIN}

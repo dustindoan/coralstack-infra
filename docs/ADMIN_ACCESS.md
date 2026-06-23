@@ -125,6 +125,7 @@ This is the authoritative list. Keep in sync with reality.
 | Proxmox | 8006 | hypervisor NIC | `https://<nuc-lan-ip>:8006` from LAN | `https://proxmox.nuc` |
 | OPNsense | 443 | LAN + OPT1 NICs | `https://10.0.0.1` from LAN | `https://opnsense.fw` |
 | TubeArchivist | 8000 | 127.0.0.1 | `ssh -L 8000:localhost:8000 nuc` | `https://tube.nuc` |
+| Dispatcharr | 9191 | 127.0.0.1 | `ssh -L 9191:localhost:9191 coralstack-apps` | `https://tv.nuc` |
 | MinIO console (Ente) | 3201 | container network only | `docker compose exec` or `ssh -L 3201:ente-minio:3201 nuc` | (no change — internal only) |
 
 Future entries will appear here when added. If you're adding a service and aren't

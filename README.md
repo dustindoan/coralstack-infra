@@ -13,6 +13,7 @@ of the community connects over Tailscale or public DNS. Any community can fork a
 | Pocket ID    | OIDC + passkeys (SSO)     | Sign in with Apple      |
 | Ente Photos  | Photos & videos (E2E)     | iCloud Photos           |
 | Jellyfin     | Music (+ movies/TV)       | Apple Music / Spotify   |
+| Dispatcharr  | IPTV manager → Jellyfin Live TV (admin-only) | Cable box / IPTV app |
 | Vaultwarden  | Password vault (E2E)      | iCloud Keychain         |
 | Caddy        | Reverse proxy + auto-TLS  | Manual cert juggling    |
 

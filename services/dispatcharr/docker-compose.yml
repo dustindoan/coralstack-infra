@@ -1,0 +1,18 @@
+services:
+  dispatcharr:
+    image: ghcr.io/dispatcharr/dispatcharr:latest
+    container_name: dispatcharr
+    restart: unless-stopped
+    # Admin-plane: the entire web UI is operator-only (channel curation, provider
+    # config, EPG matching). Members watch Live TV inside Jellyfin and never touch
+    # this. Per docs/ADMIN_ACCESS.md "The rule", bind to loopback — no Caddy route,
+    # no subdomain, no network alias. Reach via:
+    #   ssh -L 9191:localhost:9191 coralstack-apps
+    ports:
+      - "127.0.0.1:9191:9191"
+    environment:
+      TZ: ${TZ}
+    volumes:
+      # All-in-one image keeps its bundled Postgres + Redis state, channel config,
+      # and EPG cache under /data.
+      - ${DATA_PATH:?DATA_PATH must be set (run ./setup.sh which resolves it to an absolute path)}/dispatcharr:/data

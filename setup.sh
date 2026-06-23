@@ -91,6 +91,7 @@ mkdir -p \
 	"$DATA_PATH/pocket-id" \
 	"$DATA_PATH/vaultwarden" \
 	"$DATA_PATH/jellyfin/config" "$DATA_PATH/jellyfin/cache" \
+	"$DATA_PATH/dispatcharr" \
 	"$DATA_PATH/ente/postgres" "$DATA_PATH/ente/museum-data" \
 	"$DATA_PATH/open-webui"
 

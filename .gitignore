@@ -1,6 +1,7 @@
 .env
 services/*/.env
 services/*/*.ovpn
+docker-compose.override.yml
 data/
 *.log
 .DS_Store

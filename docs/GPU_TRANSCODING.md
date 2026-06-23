@@ -5,9 +5,11 @@ Without this, Jellyfin software-transcodes on the 2-core i7-7567U (`libx264`),
 which caps how many simultaneous streams — Live TV included — the host can serve
 and burns CPU/power doing it.
 
-> **Status: specced, not yet executed.** Part 1 is host-admin **boundary work** that
-> needs a maintenance window (host + VM reboot = full-stack downtime). Part 2 is the
-> software wiring. Nothing here is applied to the running stack yet.
+> **Status: DONE on this NUC (2026-06-23).** iGPU is passed through to apps VM 101 and
+> Jellyfin has `/dev/dri`. The steps below are the as-executed runbook (re-run if the VM
+> is rebuilt). Part 1 is host-admin **boundary work** needing a maintenance window (host +
+> VM reboot = full-stack downtime). The only remaining manual step is #9 (enable QSV in
+> the Jellyfin UI), unless `encoding.xml` gets templated later.
 
 ## Hardware (this deployment)
 
@@ -48,19 +50,28 @@ host, taking the whole stack offline for a few minutes.
    options vfio-pci ids=8086:5927
    softdep i915 pre: vfio-pci
    ```
-   And ensure vfio loads early — `/etc/modules`:
+   And ensure vfio loads early — add to **both** `/etc/modules` *and*
+   `/etc/initramfs-tools/modules` (the latter is what actually put vfio-pci in the
+   initramfs so it claims the GPU before i915 — `/etc/modules` alone wasn't enough here):
    ```
    vfio
    vfio_iommu_type1
    vfio_pci
    ```
-   Then `update-initramfs -u -k all`.
+   Then `update-initramfs -u -k all`. Verify with
+   `lsinitramfs /boot/initrd.img-$(uname -r) | grep vfio-pci.ko`.
 
-3. **Assign the device to VM 101** (render-only — no `x-vga`, we don't need display out):
+3. **Assign the device to VM 101** — **without** `pcie=1`:
    ```
-   qm set 101 -hostpci0 0000:00:02.0,pcie=1
+   qm set 101 -hostpci0 0000:00:02.0
    ```
-   (Or Proxmox UI: VM 101 → Hardware → Add → PCI Device → `0000:00:02.0`, PCI-Express on.)
+   ⚠️ The "textbook" form `...,pcie=1` **fails** here (`q35 machine model is not enabled`):
+   PCIe passthrough needs the `q35` machine type, but VM 101 is `i440fx`, and converting
+   a running production VM to q35 risks renaming the guest NIC (→ broken networking, and
+   with the iGPU now passed through the host has no console for recovery). Legacy PCI
+   passthrough on i440fx works fine for a render-only iGPU, so we keep i440fx and omit
+   `pcie=1`. (If you ever do want q35, do it in a window where you can reach the guest via
+   the Proxmox **noVNC** console — that still works, the VM keeps its emulated VGA.)
 
 4. **Stop VM 101** (`qm stop 101`) so it restarts cleanly with the new device.
 
@@ -80,19 +91,27 @@ host, taking the whole stack offline for a few minutes.
    lspci | grep -i vga            # the Intel Iris device
    ```
 
-8. **Give the Jellyfin container the render node.** In `services/jellyfin/docker-compose.yml`
-   add (the render GID is the VM's, not the container's — read it first):
+8. **Give the Jellyfin container the render node** via a host-specific
+   `docker-compose.override.yml` at the repo root (gitignored — keeps the committed
+   compose portable for forks/hosts without this GPU; auto-merged by docker compose).
+   Read the GIDs first — they're the VM's, not the container's:
    ```bash
-   getent group render | cut -d: -f3   # e.g. 993 — use this in group_add
+   getent group render | cut -d: -f3   # 993 here → group_add
+   getent group video  | cut -d: -f3   # 44 here
    ```
+   `~/coralstack-infra/docker-compose.override.yml`:
    ```yaml
+   services:
+     jellyfin:
        devices:
          - /dev/dri:/dev/dri
        group_add:
-         - "993"            # render GID from the apps VM (from the command above)
+         - "993"   # render GID (this VM)
+         - "44"    # video GID (this VM)
    ```
-   Then `docker compose up -d jellyfin`. (The Jellyfin image bundles its own
-   ffmpeg + Intel drivers, so nothing extra is needed inside the guest.)
+   Then `docker compose up -d jellyfin` and confirm `docker exec jellyfin ls /dev/dri`
+   shows `renderD128`. (The Jellyfin image bundles its own ffmpeg + Intel drivers, so
+   nothing extra is needed inside the guest.)
 
 9. **Enable HW accel in Jellyfin:** Dashboard → Playback → Transcoding →
    - Hardware acceleration: **Intel QuickSync (QSV)** (VAAPI also works)

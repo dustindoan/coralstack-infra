@@ -278,6 +278,35 @@ if grep -qE '^\s*-\s*services/jellyfin/' docker-compose.yml && [[ -f "$jellyfin_
 	fi
 fi
 
+# ─── Jellyfin GPU transcoding config (render) ────────────────────────────────
+# Apply the VAAPI hardware-transcode config ONLY on a host that has the iGPU
+# passed through — signalled by the presence of docker-compose.override.yml (the
+# gitignored file that adds /dev/dri to Jellyfin; see docs/GPU_TRANSCODING.md).
+# Keeps the setting reproducible across VM rebuilds without re-clicking the
+# Playback UI. Skip-if-exists; same root-owned-volume docker cp pattern as the SSO
+# render. NOTE: VAAPI (not QSV) — QSV fails on the Kaby Lake iGPU here.
+jellyfin_enc_template="services/jellyfin/encoding.xml.template"
+jellyfin_enc_host="$DATA_PATH/jellyfin/config/config/encoding.xml"
+jellyfin_enc_ctr="/config/config/encoding.xml"
+
+if grep -qE '^\s*-\s*services/jellyfin/' docker-compose.yml && [[ -f "$jellyfin_enc_template" && -f docker-compose.override.yml ]]; then
+	if [[ -f "$jellyfin_enc_host" ]]; then
+		log "Jellyfin encoding.xml already present — leaving as-is."
+		log "  To re-apply the GPU template: docker exec jellyfin rm $jellyfin_enc_ctr, then re-run ./setup.sh"
+	elif docker ps -a --format '{{.Names}}' | grep -qx jellyfin; then
+		log "Applying Jellyfin GPU (VAAPI) transcoding config from template"
+		docker exec jellyfin mkdir -p /config/config
+		docker cp "$jellyfin_enc_template" "jellyfin:$jellyfin_enc_ctr"
+		if docker ps --format '{{.Names}}' | grep -qx jellyfin; then
+			log "Restarting Jellyfin to load the transcoding config"
+			docker restart jellyfin >/dev/null
+		fi
+	else
+		mkdir -p "$(dirname "$jellyfin_enc_host")"
+		cp "$jellyfin_enc_template" "$jellyfin_enc_host"
+	fi
+fi
+
 # ─── Bring it up ─────────────────────────────────────────────────────────────
 # docker compose up handles pull + build transparently: pulls registry images,
 # builds services with a build: directive (like our custom Caddy).

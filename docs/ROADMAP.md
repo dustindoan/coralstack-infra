@@ -45,6 +45,7 @@ back into this roadmap and into memory for items that don't yet have docs.
 | Dispatcharr (IPTV → Jellyfin Live TV) | ✅ deployed (admin-plane) | [services/dispatcharr](../services/dispatcharr/docker-compose.yml), [ADMIN_ACCESS.md](ADMIN_ACCESS.md) |
 | Open WebUI | ✅ deployed (Ollama on Mac mini) | [PROXMOX_MIGRATION.md](PROXMOX_MIGRATION.md) Phase 4c |
 | TubeArchivist | 🚧 in progress | (this branch) |
+| Music acquisition pipeline (buy → beets → Jellyfin) | 💭 specced (hand-off) | [MUSIC_ACQUISITION.md](MUSIC_ACQUISITION.md) — ongoing purchase→library workflow (gate #2); existing-library migration stays in coralstack-migrator's `media` module |
 
 ### Infrastructure
 | Item | Status | Doc |
@@ -73,7 +74,8 @@ again" makes backups non-negotiable.
 | Headscale (self-hosted tailnet) | 📋 specced | [HEADSCALE.md](HEADSCALE.md) |
 | GPU transcoding (Jellyfin QSV via iGPU passthrough) | ✅ done (2026-06-23) | [GPU_TRANSCODING.md](GPU_TRANSCODING.md) — Iris 650 passed to apps VM 101; Jellyfin has /dev/dri. Remaining: enable QSV in Jellyfin UI |
 | Admin front door (Homepage dashboard + admin-SSO) | 💭 captured, not built | [memory](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_admin_dashboard.md) — 3 layers: Homepage / Headscale reachability / forward_auth gate. Proxmox-OIDC + Dispatcharr#806 noted |
-| Backup strategy implementation | 🚧 built, restore test pending | [BACKUPS.md](BACKUPS.md) — restic+rclone service ([services/backup](../services/backup/)); cloud-agnostic destination; nightly DB-dump + whole-tree snapshot. Remaining: deploy + run the restore test on the apps VM |
+| Backup strategy implementation | ✅ deployed + restore-tested (DBs+configs to B2 CA-East); photo upload deferred until migration settles | [BACKUPS.md](BACKUPS.md) — restic+rclone service ([services/backup](../services/backup/)), cloud-agnostic |
+| Service update strategy (pin tags → Renovate → agent) | 💭 specced (hand-off) | [APP_UPDATES.md](APP_UPDATES.md) — pin the 4 floating tags, add Renovate PRs into the existing flow, layer lettabot triage later |
 | Observability (Grafana/Loki) | 💭 not specced | TBD |
 
 ---

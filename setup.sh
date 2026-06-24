@@ -82,6 +82,23 @@ else
 	ABS_DATA_PATH="$DATA_PATH"
 fi
 
+# Backup repository path. Defaults to a local repo under DATA_PATH (which
+# backup.sh excludes from the snapshot so it never captures itself). Same
+# host as the data, so it's a working/testable repo — NOT real durability;
+# docs/BACKUPS.md covers pointing it offsite. Resolve to absolute and persist,
+# same as DATA_PATH, so compose and future runs agree.
+: "${BACKUP_REPO_PATH:=}"
+if [[ -z "$BACKUP_REPO_PATH" ]]; then
+	BACKUP_REPO_PATH="$DATA_PATH/backup/repo"
+elif [[ "$BACKUP_REPO_PATH" != /* ]]; then
+	BACKUP_REPO_PATH="$REPO_ROOT/${BACKUP_REPO_PATH#./}"
+fi
+if grep -q '^BACKUP_REPO_PATH=' .env; then
+	sed -i.bak "s|^BACKUP_REPO_PATH=.*|BACKUP_REPO_PATH=$BACKUP_REPO_PATH|" .env && rm -f .env.bak
+else
+	printf '\nBACKUP_REPO_PATH=%s\n' "$BACKUP_REPO_PATH" >> .env
+fi
+
 [[ -d "$STORAGE_PATH" ]] || warn "STORAGE_PATH ($STORAGE_PATH) doesn't exist yet — create it before starting services that need it."
 
 # ─── Data dirs ───────────────────────────────────────────────────────────────
@@ -93,7 +110,9 @@ mkdir -p \
 	"$DATA_PATH/jellyfin/config" "$DATA_PATH/jellyfin/cache" \
 	"$DATA_PATH/dispatcharr" \
 	"$DATA_PATH/ente/postgres" "$DATA_PATH/ente/museum-data" \
-	"$DATA_PATH/open-webui"
+	"$DATA_PATH/open-webui" \
+	"$DATA_PATH/backup/staging" "$DATA_PATH/backup/cache" \
+	"$BACKUP_REPO_PATH"
 
 # Ente photo blobs land on STORAGE_PATH (USB-attached storage), not DATA_PATH
 # (root FS). Pre-create the bucket dir if STORAGE_PATH is mounted; if it isn't,
@@ -153,10 +172,22 @@ init_service_env ente
 init_service_env open-webui
 init_service_env dispatcharr
 init_service_env jellyfin
+init_service_env backup
 
 fill_secret services/pocket-id/.env   ENCRYPTION_KEY      "$(gen_hex)"
 fill_secret services/vaultwarden/.env ADMIN_TOKEN         "$(gen_base64)"
 fill_secret services/open-webui/.env  WEBUI_SECRET_KEY      "$(gen_hex)"
+
+# Restic repo password is a TIER-1 secret: lose it and every backup is
+# unrecoverable. Warn loudly the first time we generate one so the admin
+# records it on paper (see secret tiering) instead of trusting it lives only
+# inside services/backup/.env on the very host the backups are meant to survive.
+if [[ -f services/backup/.env ]] && grep -qE '^RESTIC_PASSWORD=$' services/backup/.env; then
+	fill_secret services/backup/.env RESTIC_PASSWORD "$(gen_base64)"
+	warn "Generated RESTIC_PASSWORD in services/backup/.env — this is a TIER-1 secret."
+	warn "Without it your backups are UNRECOVERABLE. Copy it to paper in the safe now:"
+	warn "    grep '^RESTIC_PASSWORD=' services/backup/.env"
+fi
 
 # Ente secrets — sized to match what museum's libsodium APIs decode to
 # (crypto_secretbox_KEYBYTES=32 for ENTE_MUSEUM_KEY, generichash_BYTES_MAX=64

@@ -1,0 +1,39 @@
+# Nightly encrypted backups (restic + rclone). See docs/BACKUPS.md.
+#
+# Reaches Ente's Postgres over the coralstack network for pg_dump (no Docker
+# socket needed). Reads everything else from read-only bind mounts of the data
+# + storage trees, dumps the SQLite databases, and pushes one restic snapshot
+# to RESTIC_REPOSITORY (a local path by default; an rclone: remote for offsite).
+services:
+  backup:
+    build: .
+    image: coralstack/backup:restic
+    # Custom-built image — don't try to pull it from a registry.
+    pull_policy: build
+    container_name: backup
+    restart: unless-stopped
+    env_file:
+      # Ente Postgres password lives in Ente's secrets — read it here rather
+      # than duplicating the secret. required:false so backups still come up if
+      # Ente is commented out of the stack (its dump just gets skipped).
+      - path: ../ente/.env
+        required: false
+      - path: .env
+        required: false
+    environment:
+      TZ: ${TZ}
+      COMMUNITY: ${COMMUNITY}
+      # restic cache on a persistent volume so it isn't rebuilt every run.
+      RESTIC_CACHE_DIR: /cache
+    volumes:
+      # The whole on-disk tree, read-only. /data = every service's config + DB;
+      # /storage = the TerraMaster (photo blobs + music). DB dumps land in
+      # /staging; the restic cache + local repo live under /data/backup (which
+      # backup.sh excludes from the snapshot so it never captures itself).
+      - ${DATA_PATH:?DATA_PATH must be set in .env — run ./setup.sh}:/data:ro
+      - ${STORAGE_PATH:?STORAGE_PATH must be set in .env}:/storage:ro
+      - ${DATA_PATH}/backup/staging:/staging
+      - ${DATA_PATH}/backup/cache:/cache
+      # Local repository target (used when RESTIC_REPOSITORY=/repo, the
+      # default). Harmless when RESTIC_REPOSITORY is an rclone: remote.
+      - ${BACKUP_REPO_PATH:?BACKUP_REPO_PATH must be set in .env — run ./setup.sh}:/repo

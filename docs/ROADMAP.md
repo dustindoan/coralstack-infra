@@ -73,7 +73,7 @@ again" makes backups non-negotiable.
 | Headscale (self-hosted tailnet) | 📋 specced | [HEADSCALE.md](HEADSCALE.md) |
 | GPU transcoding (Jellyfin QSV via iGPU passthrough) | ✅ done (2026-06-23) | [GPU_TRANSCODING.md](GPU_TRANSCODING.md) — Iris 650 passed to apps VM 101; Jellyfin has /dev/dri. Remaining: enable QSV in Jellyfin UI |
 | Admin front door (Homepage dashboard + admin-SSO) | 💭 captured, not built | [memory](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_admin_dashboard.md) — 3 layers: Homepage / Headscale reachability / forward_auth gate. Proxmox-OIDC + Dispatcharr#806 noted |
-| Backup strategy implementation | 📋 specced in memory | TBD — promote [memory](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_backup_strategy.md) to `BACKUPS.md` |
+| Backup strategy implementation | 🚧 built, restore test pending | [BACKUPS.md](BACKUPS.md) — restic+rclone service ([services/backup](../services/backup/)); cloud-agnostic destination; nightly DB-dump + whole-tree snapshot. Remaining: deploy + run the restore test on the apps VM |
 | Observability (Grafana/Loki) | 💭 not specced | TBD |
 
 ---

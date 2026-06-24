@@ -9,6 +9,7 @@ include:
   - services/jellyfin/docker-compose.yml
   - services/dispatcharr/docker-compose.yml
   - services/open-webui/docker-compose.yml
+  - services/backup/docker-compose.yml
 
 # The project's default network is named `coralstack`. Every service in this
 # compose (and every included compose) lands on it automatically, so Caddy

@@ -41,16 +41,20 @@ and (b) telling members how to acquire new music going forward.
 - **Acquisition guidance:** documented recommendation — Bandcamp, Qobuz, ripping CDs, etc. Page or section on coralstack.org.
 - **Bar for "done":** a member can rebuild their listening setup end-to-end with documented steps.
 
-### 3. Backups (basic, present)
+### 3. Backups (basic, present) — 🚧 built, restore test pending
 The pitch is "trust this with your family's photos and passwords." Without offsite
 backups, one disk failure becomes a launch-killing story.
 - **Strategy exists** in [memory: backup strategy](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_backup_strategy.md) (3-2-1, RAID ≠ backup, etc.).
-- **Minimum viable implementation:** nightly restic → B2 (or equivalent) for:
-  - Vaultwarden DB (`${DATA_PATH}/vaultwarden/`)
-  - Ente postgres + minio (`${DATA_PATH}/ente-postgres/`, `${STORAGE_PATH}/ente-minio/`)
-  - Pocket ID config + DB
-  - Jellyfin config (not media — too large; document as "members keep originals")
-- **Bar for "done":** one successful restore test from B2 to a fresh disk; runbook for the restore.
+- **Implemented:** [services/backup](../services/backup/) — `restic` + `rclone`,
+  scheduled nightly. Consistent DB dumps (Ente `pg_dump`, Vaultwarden + Pocket ID
+  SQLite `.backup`) + one whole-tree snapshot of `${DATA_PATH}` and `${STORAGE_PATH}`
+  (photos always; music excluded by default as re-acquirable). **Cloud-agnostic**:
+  the destination is a pure env knob (local path, or `rclone:` → B2/Wasabi/R2/SFTP/
+  a co-op member's box) — no vendor lock-in, opaque encrypted blobs only. Runbook:
+  [docs/BACKUPS.md](BACKUPS.md).
+- **Bar for "done":** one successful restore test from the repo. Procedure is in
+  [BACKUPS.md → Restore test](BACKUPS.md#restore-test-the-gate); **still needs to be
+  run on the apps VM** after deploy.
 
 ### 4. Member onboarding doc
 [docs/ONBOARDING.md](ONBOARDING.md) is admin-facing (OIDC client wiring). There's no

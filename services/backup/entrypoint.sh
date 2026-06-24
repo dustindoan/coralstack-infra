@@ -12,7 +12,12 @@ case "${1:-cron}" in
 		echo "[backup] scheduled: '${BACKUP_CRON}'  (TZ=${TZ:-UTC})"
 		echo "[backup] repository: ${RESTIC_REPOSITORY:-<unset>}"
 		echo "[backup] run a manual backup with: docker exec backup backup.sh"
-		exec supercronic /etc/crontab
+		# Invoke supercronic by ABSOLUTE path: as PID 1 it re-execs itself to
+		# set up the process reaper, using argv[0]. A bare name (resolved via
+		# PATH) leaves argv[0] non-absolute, so the re-exec fails with
+		# "Failed to fork exec: no such file or directory" and the container
+		# crash-loops. The absolute path makes the self-re-exec resolve.
+		exec /usr/local/bin/supercronic /etc/crontab
 		;;
 	# Convenience pass-throughs for `docker exec backup <cmd>` (see BACKUPS.md):
 	backup|backup.sh)  exec /usr/local/bin/backup.sh ;;

@@ -39,6 +39,9 @@ members can't actually switch — the data lives in iCloud, leaving is too painf
 and (b) telling members how to acquire new music going forward.
 - **Migration:** future `media` module in coralstack-migrator (per its `lib.rs`). Not started.
 - **Acquisition guidance:** documented recommendation — Bandcamp, Qobuz, ripping CDs, etc. Page or section on coralstack.org.
+- **Design / hand-off:** [docs/MUSIC_ACQUISITION.md](MUSIC_ACQUISITION.md) — the
+  purchase → ingest → Jellyfin pipeline ("buy an album on-the-go, it appears in
+  the collection"), options, and the buy-&-own vs auto-grab decision.
 - **Bar for "done":** a member can rebuild their listening setup end-to-end with documented steps.
 
 ### 3. Backups (basic, present) — 🚧 built, restore test pending

@@ -23,11 +23,10 @@ Two distinct things hide in gate #2:
 
 - Jellyfin mounts the library **read-only**: `${STORAGE_PATH}/music:/media/music:ro`
   (see [services/jellyfin/docker-compose.yml](../services/jellyfin/docker-compose.yml)).
-- **beets is referenced but not implemented.** `.env.example` and the Jellyfin
-  compose comment say the library is "managed by beets on the host" — but there
-  is **no beets service in the repo** and no host runbook for it. Treat beets as
-  *intended, not built*. A future session should decide whether beets runs in a
-  container (reproducible, fits the stack) or on the host (as the comments imply).
+- **beets is now built as a container** (`services/music/`, 2026-07-15) — the
+  earlier "managed by beets on the host" comments were aspirational and have
+  been corrected. Decision resolved in favour of containerized (reproducible,
+  fits the stack). See [What's built](#whats-built-2026-07-15).
 - Acquisition guidance today is just a note in gate #2 (Bandcamp, Qobuz, rip CDs).
 - Music is **excluded from offsite backup by default** (`BACKUP_EXCLUDES`,
   see [BACKUPS.md](BACKUPS.md)) — it's treated as re-acquirable. That assumption
@@ -72,7 +71,7 @@ streaming/locker services (Apple Music, Spotify, Amazon Music streaming).
 | Store | Catalog | Format | Clean automation? | Notes |
 |---|---|---|---|---|
 | **Bandcamp** | Indie-heavy; **patchy for major labels** | MP3/FLAC, DRM-free | ✅ **Yes, server-native** — [BandcampSync](https://github.com/meeb/bandcampsync) is a Docker container that downloads **your own purchases** (FLAC, checkpointed so it only fetches new buys); official OAuth API also exists | Most artist-direct / co-op-aligned, and the **only store where the full "buy → auto-appears" pipeline is both clean and already-built.** The Mumford & Sons example likely *isn't* here (major label). |
-| **Qobuz** | Broad incl. major labels (Mumford & Sons ✓); Hi-Res | FLAC up to hi-res, DRM-free purchase | ⚠️ **Buildable, not off-the-shelf** — see [Qobuz acquisition](#qobuz-acquisition--build-options-verified-2026-06-25). The purchases-API path is clean *by construction*; the GUI Downloader is desktop-only; `qobuz-dl`/streamrip default to **stream-ripping (rejected)** | Best catalog for the mainstream example. The clean automated lane requires building a small purchases-only fetcher; auth currency is the gating risk. |
+| **Qobuz** | Broad incl. major labels (Mumford & Sons ✓); Hi-Res | FLAC up to hi-res, DRM-free purchase | ✅ **Verified buildable (2026-07-15)** — the purchases-API path passed a live end-to-end probe (token auth → purchase enumeration → full hi-res file granted); see [Qobuz acquisition](#qobuz-acquisition--build-options-verified-2026-06-25). GUI Downloader remains the desktop-only fallback; `qobuz-dl`/streamrip default to **stream-ripping (rejected)** | Best catalog for the mainstream example. Fetcher is a small build on a proven path; token lifetime is the remaining operational unknown. |
 | ~~**7digital**~~ | ~~Broad, major labels~~ | — | ❌ **Ruled out** | Acquired by Songtradr → folded into **MassiveMusic** (B2B-only, June 2025). API moved to `docs.massivemusic.com`, now partner/commercial-agreement gated — **no individual-developer access.** Don't re-chase. *(verified 2026-06-25)* |
 | **iTunes Store** (buy, not Apple Music) | Very broad | 256k AAC, DRM-free | ❌ No clean server-side automation | Files are clean once purchased, but getting them off a phone to the server is manual. |
 
@@ -100,7 +99,11 @@ end-to-end is **minutes**, not seconds — and only if the fetch step is automat
 - **Bandcamp** — *genuinely* near-instant + on-the-go. BandcampSync polls on a
   timer, server-side, hands-off. Buy on phone → it appears.
 - **Qobuz (purchases-API fetcher, if built)** — same: poll `getUserPurchases`,
-  auto-fetch, minutes, hands-off.
+  auto-fetch, minutes, hands-off. One mobile wrinkle (2026-07-15): the **iOS app
+  can't purchase** (Apple IAP-cut avoidance, same as Kindle/Audible) — on-the-go
+  buying happens in **mobile Safari at the qobuz.com store** (home-screen
+  bookmark recommended). Purchases land on the account identically; the fetcher
+  doesn't care which surface the buy came from.
 - **Qobuz (interim GUI Downloader)** — **desktop-tethered, not on-the-go.** The
   official Downloader is Windows/macOS-only with no Linux/headless build, so it
   can't run on the apps VM. Flow degrades to "buy on phone → next time at the Mac,
@@ -164,9 +167,23 @@ This is a small, coralstack-shaped artifact (cf. the Ente upload sidecar / migra
 - **tidalf's `raw.py`** — minimal reference for the exact endpoint shapes + login flow.
 
 **Risks (one is make-or-break):**
-1. **Auth currency — THE gating unknown.** `user/login → x-user-auth-token` is the
-   flow Qobuz's OAuth migration disrupted (it's what broke `qobuz-dl`). streamrip's
-   March 2026 release is a *good* sign it's been kept working, but **verify first.**
+1. **Auth currency — RESOLVED IN DESIGN, probe pending (2026-07-15).** The
+   password `user/login` flow is **confirmed broken** since ~2026-04: Qobuz now
+   401s it (streamrip [#954](https://github.com/nathom/streamrip/issues/954),
+   [#956](https://github.com/nathom/streamrip/issues/956), both open, no fix,
+   no maintainer response; Qobuz officially moved to a token login,
+   [#854](https://github.com/nathom/streamrip/issues/854)). The June note that
+   streamrip's March release was "a good sign" was wrong — the breakage predates
+   it being noticed. **The pivot:** streamrip's `use_auth_token` mode *also*
+   routes through `user/login`, so don't depend on streamrip's login at all.
+   Instead, extract `user_auth_token` from a logged-in **web-player session**
+   (DevTools → Network → login response, or localStorage) and call the API
+   directly with `X-App-Id` + `X-User-Auth-Token` headers — `user/login` exists
+   only to mint that token, and the rest of the API doesn't need it. The
+   three-call flow becomes two calls plus a rare manual token refresh. The
+   fetcher still reuses streamrip's `QobuzSpoofer` for app_id/secret extraction
+   (**verified working live 2026-07-15**: app_id + 3 secrets pulled from the
+   web bundle).
 2. **`intent`/entitlement** — confirm `getFileUrl` serves the *purchased* file (full
    owned quality), ideally without an active streaming sub.
 3. **app_id/secret rotation** — embedded creds scraped from Qobuz's web bundle; Qobuz
@@ -175,48 +192,133 @@ This is a small, coralstack-shaped artifact (cf. the Ente upload sidecar / migra
    defensible than stream-ripping (retrieving what you bought, like the official app),
    but still unsanctioned automation. Honest grey, not green.
 
-**Gating first step (one afternoon, before any code):** install streamrip and confirm
-it still authenticates to a live Qobuz account today. If yes → the purchases-only
-fetcher is a weekend project and the automatic Qobuz lane is real. If no → fall back
-to the interim GUI-Downloader-on-a-desktop + Syncthing pattern, and Qobuz stays
-desktop-tethered until auth is solved.
+**Probe result (2026-07-15): GATES PASSED, with a quality ceiling — fetcher
+greenlit AND built.** Verified live against a real purchase (Mumford & Sons —
+*Prizefighter*): web-session token + spoofed app_id authenticated (`user/get`
+200), `purchase/getUserPurchases` enumerated the album, and
+`getFileUrl(intent=download)` served real FLAC files with no streaming
+subscription. The token-auth pivot works end-to-end and the whole back half now
+runs (see [below](#whats-built-2026-07-15)).
 
-## Architecture sketch (for the building session)
+**⚠️ Quality ceiling — download tops out at 24-bit/96 kHz, NOT the 24/192 you
+buy.** The initial probe's step 4 was too lenient (it checked for *metadata*,
+not an actual download URL) and falsely reported 24/192. Corrected: with a
+web-session token + the **web-player app_id**, `getFileUrl(intent=download)`
+for **format 27 (24-bit/>96 kHz)** is refused —
+`TrackRestrictedByPurchaseCredentials` — *even for a hi-res purchase*. Only the
+**official Downloader's app credentials** unlock the 192 kHz tier. **Format 7
+(24-bit/96 kHz) downloads cleanly**, so the fetcher walks a ladder 27 → 7 → 6
+and lands on genuine hi-res 24/96. This is far beyond CD and excellent for
+listening, but it is *not* byte-identical to the 24/192 master. If bit-perfect
+archival of the top tier ever matters, that's the one job the desktop GUI
+Downloader still does that this lane can't — an argument for keeping the
+Downloader-on-a-desktop fallback documented, not deleted. (Ripping the app_id
+out of the *desktop* Downloader to get 192 headless is possible in principle
+but a real reverse-engineering project and more ToS-aggressive; not pursued.)
 
-A new `services/music/` (or extend coralstack-migrator's `media` module):
-- **Acquisition watcher** — polls the chosen store's purchase history (creds in
-  gitignored `services/music/.env`), downloads DRM-free files to a staging dir.
-- **beets ingest** — containerized beets imports staging → `${STORAGE_PATH}/music`.
-  (Reconcile with the "beets on host" note: containerizing is more reproducible.)
-- **Jellyfin scan trigger** — call Jellyfin's refresh API after import.
+**Other notes:** the admin's Qobuz account is on the gmail identity; the iOS
+app can't purchase (buy via mobile Safari — see the latency section); **token
+lifetime is the one remaining unknown** — the probe token survived hours on day
+one; re-run the probe with the same token after a week to size the manual
+re-auth burden before deciding how loudly the fetcher should alarm on 401.
 
-The deterministic back half (beets watch-folder + Jellyfin scan) can be built and
-proven **first**, independent of any store. The store-specific front half
-(purchase → fetch) is staged on top once a store is chosen.
+### What's built (2026-07-15)
+
+The **deterministic back half is done and proven end-to-end** (imported
+*Prizefighter* start-to-finish in a test container):
+
+- **`services/music/` service** — a containerized beets watch-folder
+  (`coralstack/music-ingest:beets-2.12.0`, custom image like `caddy/` and
+  `backup/`). `ingest.sh` polls `${STORAGE_PATH}/music-staging`, waits for the
+  drop to go **quiescent** (no file touched for `QUIESCENCE_SECONDS`, so a
+  half-copied album is never imported), runs a `--quiet` beets import that
+  **moves** (atomic, same filesystem) accepted files into
+  `${STORAGE_PATH}/music`, sweeps anything beets rejects to
+  `music-staging/.review`, and fires Jellyfin's `POST /Library/Refresh`. beets
+  config: MusicBrainz tagging with `quiet_fallback: asis` (store files arrive
+  well-tagged — verified: artist/album/title/track/date all survive, cover art
+  embedded), `fetchart` + `embedart`. Wired into root `docker-compose.yml`.
+- **`services/music/qobuz-fetch.py`** — the purchases-only fetcher (v0,
+  one-shot). Enumerates `getUserPurchases`, downloads each owned track at the
+  best obtainable quality (ladder above) into staging, skips existing files
+  (idempotent re-runs), only ever exposes complete files (`.part` → rename).
+  Run manually with `QOBUZ_TOKEN`; the containerized poll loop is the next build.
+- **Jellyfin compose + `.env.example`** — the stale "beets on the host"
+  comments corrected to point at the music-ingest container as the sole writer.
+
+**One seam still unverified:** the Jellyfin `/Library/Refresh` call itself
+wasn't exercised against a live Jellyfin (none running in the test env; the
+back-half test ran without `JELLYFIN_API_KEY` and correctly logged the skip).
+The endpoint + auth are standard for Jellyfin 10.11. Jellyfin runs on the
+**`coralstack-apps`** host (10.0.0.10, reached via `ssh coralstack-apps` — the
+music-ingest container reaches it in-stack at `http://jellyfin:8096`). Confirm
+on first real deploy by setting `JELLYFIN_API_KEY` in `services/music/.env`
+(Jellyfin Dashboard → API Keys) and watching the album appear after an import.
+Quick liveness check from the apps host:
+`curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8096/Library/Refresh`
+returns 401/403 without a key (endpoint alive), 204 with a valid `?api_key=`.
+
+**The probe:**
+[services/music/qobuz-probe.py](../services/music/qobuz-probe.py) checks the
+make-or-break questions (token validity, `getUserPurchases`, and — with the
+2026-07-15 fix — `getFileUrl(intent=download)` returning an actual **download
+URL** at the best obtainable tier, reporting honestly when the 24/192 tier is
+refused) without touching the broken `user/login`. It doubles as the
+**token-lifetime check**: re-run it with the same token weekly. Run with a
+token extracted from a logged-in play.qobuz.com session:
+
+```
+QOBUZ_TOKEN=<token> uv run services/music/qobuz-probe.py
+```
+
+Requires at least one purchase on the account to complete the entitlement step.
+
+## Architecture — as built + what remains
+
+`services/music/` (the [What's built](#whats-built-2026-07-15) section has the detail):
+- **beets ingest** ✅ — containerized watch-folder, staging → `${STORAGE_PATH}/music`.
+- **Jellyfin scan trigger** ✅ (built; live-fire unverified — see the seam note).
+- **Acquisition fetcher** — Qobuz ✅ as a manual one-shot (`qobuz-fetch.py`);
+  **the remaining build is the poll loop** that wraps it: a container that
+  polls `getUserPurchases` on a timer, tracks a watermark of already-fetched
+  purchases, and drops new ones into staging hands-off. Bandcamp lane
+  (BandcampSync container) is off-the-shelf, not yet added.
+
+The deterministic back half was built and proven **first**, independent of any
+store (done). The store-specific front half now just needs the poll-loop
+wrapper to become fully automatic.
 
 ## Open questions for the next session (decide *with* the admin)
 
-1. **Store strategy — largely resolved by the 2026-06-25 dig:** it's
-   **Bandcamp (automated lane) + Qobuz (mainstream lane)**, not a single primary;
-   7digital is ruled out. The remaining open call is *how* Qobuz runs: build the
-   headless **purchases-only fetcher** (clean + automatic) vs the interim
-   **GUI-Downloader-on-a-desktop + Syncthing** (desktop-tethered). **Gated entirely
-   on the streamrip auth probe** — run that first (see [Qobuz acquisition](#qobuz-acquisition--build-options-verified-2026-06-25)).
+1. **Store strategy — RESOLVED (2026-07-15):** **Bandcamp (automated lane) +
+   Qobuz (mainstream lane)**; 7digital ruled out. The Qobuz *how* is decided too:
+   the headless **purchases-only fetcher**, greenlit by the passed probe
+   (`services/music/qobuz-probe.py` — all 4 gates, real purchase, full hi-res
+   file). The GUI-Downloader interim is now just the fallback if token
+   maintenance proves too annoying in practice.
 2. **Acquisition trigger:** automated polling vs manual "ingest this" trigger?
    (ToS + reliability tradeoff.) Note: Bandcamp is already polling-on-a-timer via
-   BandcampSync; this question is really about the Qobuz lane.
-3. **beets: container or host?** (Repo convention says containerize.)
+   BandcampSync; this question is really about the Qobuz poll-loop wrapper.
+3. **~~beets: container or host?~~** RESOLVED — containerized (`services/music/`).
 4. **Backup stance:** if music is now *purchased & owned*, should it stop being
-   excluded from offsite backup? (See [BACKUPS.md](BACKUPS.md).)
-5. **Mobile UX:** which Jellyfin music client (Finamp, Symfonium, official)?
+   excluded from offsite backup? (See [BACKUPS.md](BACKUPS.md).) Sharper now
+   that the download tier is 24/96, not the 24/192 you paid for: the local files
+   are *not* a perfect re-download of the purchase, which strengthens the case
+   for backing them up rather than treating them as trivially re-acquirable.
+5. **Quality ceiling:** is 24/96 acceptable as the standing quality, or is
+   bit-perfect 24/192 worth keeping the desktop Downloader around for
+   occasional archival buys? (See the ceiling note above.)
+6. **Mobile UX:** which Jellyfin music client (Finamp, Symfonium, official)?
    Confirm the "playable on-the-go" half independent of acquisition.
-6. **Migration vs acquisition:** does the existing-library import belong here or
+7. **Migration vs acquisition:** does the existing-library import belong here or
    in coralstack-migrator's `media` module? (Probably the migrator; keep this
    doc focused on ongoing acquisition.)
 
-## Recommended first step
+## Next step
 
-Build and prove the **deterministic back half** — a containerized beets
-watch-folder that ingests into `${STORAGE_PATH}/music` and triggers a Jellyfin
-scan — using a single manually-dropped album. That de-risks stages 3–4 and gives
-a working spine. *Then* pick a store and build the purchase→fetch front half.
+The back half is built and proven. The remaining build is the **Qobuz poll-loop
+wrapper** — a container around `qobuz-fetch.py` that polls `getUserPurchases` on
+a timer, remembers what it has already pulled, and drops new purchases into
+`${STORAGE_PATH}/music-staging` unattended. Gated on one observation: **token
+lifetime** (re-run the probe with the same token after ~a week). If the token is
+short-lived, the wrapper needs a re-auth/alert story before it can run headless.

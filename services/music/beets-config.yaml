@@ -1,0 +1,41 @@
+# beets config for the CoralStack music-ingest container.
+# Mounted read-only at /etc/beets/config.yaml; mutable state (library.db,
+# import log) lives on the /config volume (${DATA_PATH}/music/beets).
+
+directory: /music
+library: /config/library.db
+
+import:
+  # Move (not copy) out of /staging — same filesystem as /music, so this is
+  # an atomic rename and staging drains itself.
+  move: yes
+  # Unattended: apply strong MusicBrainz matches without prompting…
+  quiet: yes
+  # …and import weak matches AS-IS (store files arrive well-tagged) instead
+  # of skipping them, which would strand files in staging forever.
+  quiet_fallback: asis
+  # True duplicates stay in staging; ingest.sh sweeps them to .review.
+  duplicate_action: skip
+  incremental: no
+  log: /config/import.log
+
+paths:
+  default: $albumartist/$album%aunique{}/$track $title
+  singleton: Non-Album/$artist/$title
+  comp: Compilations/$album%aunique{}/$track $title
+
+plugins: fetchart embedart
+
+fetchart:
+  auto: yes
+
+embedart:
+  auto: yes
+  # Cap embedded art so FLACs don't balloon; original cover.jpg stays in the
+  # album dir at full resolution for Jellyfin.
+  maxwidth: 1200
+
+musicbrainz:
+  # Default rate limit (1 req/s) — be a good citizen; ingest is not latency-
+  # sensitive at the per-request level.
+  ratelimit: 1

@@ -1,0 +1,41 @@
+# Music ingest — the deterministic back half of the acquisition pipeline
+# (see docs/MUSIC_ACQUISITION.md). Watches a staging folder, imports drops
+# into the library with beets (tag / art / file), triggers a Jellyfin scan.
+#
+# Feed it by dropping DRM-free files into ${STORAGE_PATH}/music-staging:
+#   - Qobuz lane: services/music/qobuz-fetch.py (purchases-only fetcher v0,
+#     run manually with QOBUZ_TOKEN; containerized polling is the front-half
+#     build, still to come)
+#   - Bandcamp lane: BandcampSync (future)
+#   - Manual: scp/rsync anything you own into the staging dir
+#
+# services/music/.env (gitignored) keys:
+#   QOBUZ_TOKEN       — web-session API token for the fetch script
+#   JELLYFIN_API_KEY  — Jellyfin Dashboard → API Keys; optional but without
+#                       it new music waits for Jellyfin's scheduled scan
+#
+# No ports, no Caddy entry: this container has no UI (see ADMIN_ACCESS.md —
+# network-only services are already unreachable from outside the stack).
+services:
+  music-ingest:
+    build: .
+    image: coralstack/music-ingest:beets-2.12.0
+    # Custom-built image — don't try to pull it from a registry.
+    pull_policy: build
+    container_name: music-ingest
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      TZ: ${TZ}
+      JELLYFIN_URL: http://jellyfin:8096
+    volumes:
+      # The library. music-ingest is the ONLY writer (Jellyfin mounts it :ro).
+      - ${STORAGE_PATH:?STORAGE_PATH must be set in .env}/music:/music
+      # The watch folder. Same filesystem as /music so beets' move is atomic.
+      - ${STORAGE_PATH}/music-staging:/staging
+      # Mutable beets state (library.db, import.log).
+      - ${DATA_PATH:?DATA_PATH must be set in .env — run ./setup.sh}/music/beets:/config
+      # beets config, read-only from the repo.
+      - ./beets-config.yaml:/etc/beets/config.yaml:ro

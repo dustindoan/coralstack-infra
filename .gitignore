@@ -6,3 +6,7 @@ data/
 *.log
 .DS_Store
 .claude/
+
+# Python bytecode
+__pycache__/
+*.pyc

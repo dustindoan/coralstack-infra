@@ -7,6 +7,7 @@ include:
   - services/vaultwarden/docker-compose.yml
   - services/ente/docker-compose.yml
   - services/jellyfin/docker-compose.yml
+  - services/music/docker-compose.yml
   - services/dispatcharr/docker-compose.yml
   - services/open-webui/docker-compose.yml
   - services/backup/docker-compose.yml

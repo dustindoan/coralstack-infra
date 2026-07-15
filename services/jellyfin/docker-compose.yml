@@ -23,7 +23,8 @@ services:
     volumes:
       - ${DATA_PATH:?DATA_PATH must be set (run ./setup.sh which resolves it to an absolute path)}/jellyfin/config:/config
       - ${DATA_PATH}/jellyfin/cache:/cache
-      # beets manages the music library on the host; Jellyfin reads it read-only
+      # The music-ingest container (services/music) owns writes to the music
+      # library via beets; Jellyfin reads it read-only
       - ${STORAGE_PATH}/music:/media/music:ro
       - ${STORAGE_PATH}/movies:/media/movies:ro
       - ${STORAGE_PATH}/shows:/media/shows:ro

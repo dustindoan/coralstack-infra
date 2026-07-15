@@ -246,17 +246,22 @@ The **deterministic back half is done and proven end-to-end** (imported
 - **Jellyfin compose + `.env.example`** — the stale "beets on the host"
   comments corrected to point at the music-ingest container as the sole writer.
 
-**One seam still unverified:** the Jellyfin `/Library/Refresh` call itself
-wasn't exercised against a live Jellyfin (none running in the test env; the
-back-half test ran without `JELLYFIN_API_KEY` and correctly logged the skip).
-The endpoint + auth are standard for Jellyfin 10.11. Jellyfin runs on the
-**`coralstack-apps`** host (10.0.0.10, reached via `ssh coralstack-apps` — the
-music-ingest container reaches it in-stack at `http://jellyfin:8096`). Confirm
-on first real deploy by setting `JELLYFIN_API_KEY` in `services/music/.env`
-(Jellyfin Dashboard → API Keys) and watching the album appear after an import.
-Quick liveness check from the apps host:
-`curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8096/Library/Refresh`
-returns 401/403 without a key (endpoint alive), 204 with a valid `?api_key=`.
+**Surfacing: Jellyfin real-time monitoring — no API key needed (verified
+2026-07-15).** The Music library on `coralstack-apps` has
+`EnableRealtimeMonitor=true`, and `${STORAGE_PATH}` is a **local ext4** volume
+(`/dev/sdb`), so Jellyfin's inotify watcher reliably catches beets' atomic
+renames into `/media/music` and rescans on its own. This is the primary (and
+sufficient) surfacing mechanism — new albums appear with **no `JELLYFIN_API_KEY`
+and no `/Library/Refresh` call**.
+
+The container's `/Library/Refresh` POST is therefore an **optional accelerator**,
+not a requirement: with no key set it logs a harmless skip (current state); set
+`JELLYFIN_API_KEY` in `services/music/.env` only if you later want an immediate
+deterministic scan on top of real-time monitoring (e.g. if monitoring ever lags
+under load, or if the library moves to storage where inotify is unreliable —
+NFS/SMB). There is **no API key to provision** for the pipeline to work.
+(Jellyfin runs on `coralstack-apps`, 10.0.0.10; the container reaches it in-stack
+at `http://jellyfin:8096`.)
 
 **The probe:**
 [services/music/qobuz-probe.py](../services/music/qobuz-probe.py) checks the
@@ -277,16 +282,16 @@ Requires at least one purchase on the account to complete the entitlement step.
 
 `services/music/` (the [What's built](#whats-built-2026-07-15) section has the detail):
 - **beets ingest** ✅ — containerized watch-folder, staging → `${STORAGE_PATH}/music`.
-- **Jellyfin scan trigger** ✅ (built; live-fire unverified — see the seam note).
-- **Acquisition fetcher** — Qobuz ✅ as a manual one-shot (`qobuz-fetch.py`);
-  **the remaining build is the poll loop** that wraps it: a container that
-  polls `getUserPurchases` on a timer, tracks a watermark of already-fetched
-  purchases, and drops new ones into staging hands-off. Bandcamp lane
-  (BandcampSync container) is off-the-shelf, not yet added.
+- **Jellyfin surfacing** ✅ — real-time monitoring (no API key; see above).
+- **Acquisition — Qobuz** ✅ **fully automatic**: `qobuz-poll` container polls
+  `getUserPurchases` every `QOBUZ_POLL_INTERVAL` (default 15 min) and downloads
+  new purchases into staging hands-off, keyed off a persistent **watermark** of
+  fetched track IDs (so re-polls never re-download even after ingest drains
+  staging). `qobuz-fetch.py` still works as a manual one-shot.
+- **Acquisition — Bandcamp** — BandcampSync container, off-the-shelf, not yet added.
 
-The deterministic back half was built and proven **first**, independent of any
-store (done). The store-specific front half now just needs the poll-loop
-wrapper to become fully automatic.
+The whole Qobuz lane is now hands-off end to end. The remaining store work is
+adding the Bandcamp lane when desired.
 
 ## Open questions for the next session (decide *with* the admin)
 
@@ -316,9 +321,16 @@ wrapper to become fully automatic.
 
 ## Next step
 
-The back half is built and proven. The remaining build is the **Qobuz poll-loop
-wrapper** — a container around `qobuz-fetch.py` that polls `getUserPurchases` on
-a timer, remembers what it has already pulled, and drops new purchases into
-`${STORAGE_PATH}/music-staging` unattended. Gated on one observation: **token
-lifetime** (re-run the probe with the same token after ~a week). If the token is
-short-lived, the wrapper needs a re-auth/alert story before it can run headless.
+The Qobuz lane is built, deployed, and hands-off (`qobuz-poll` on coralstack-apps).
+What's left is operational + optional:
+
+1. **Token lifetime** — the one open unknown for unattended running. `qobuz-poll`
+   reads `QOBUZ_TOKEN` from `services/music/.env` at container start; on a 401 it
+   logs a re-auth warning and keeps retrying. Re-extract a fresh token from a
+   play.qobuz.com session when it expires and reload with
+   `docker compose up -d qobuz-poll`. Observe how often that's needed; if it's
+   frequent, revisit the headless-login refresh sidecar (the account has a
+   Qobuz-native password, so that path is viable).
+2. **Bandcamp lane** — add BandcampSync when you start buying there.
+3. **Backup stance** — revisit excluding music from offsite backup now that it's
+   purchased & owned and only obtainable at 24/96 (not a perfect re-download).

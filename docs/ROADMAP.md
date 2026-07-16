@@ -1,8 +1,8 @@
 # Roadmap
 
 What's planned, what's in flight, and what's deferred — for the **coralstack-infra**
-repo specifically. The companion roadmap for the member-side migration tool lives in
-[coralstack-migrator](#related-projects).
+repo specifically. The member-side migration tooling lives in the
+[puddle + duckling projects](#related-projects).
 
 This doc is an **index**, not a substance doc. Each work item links to a spec, runbook,
 or open question. If a row says "TBD" in the doc column, the thinking exists (often in
@@ -46,7 +46,7 @@ back into this roadmap and into memory for items that don't yet have docs.
 | Open WebUI | ✅ deployed (Ollama on Mac mini) | [PROXMOX_MIGRATION.md](PROXMOX_MIGRATION.md) Phase 4c |
 | Uptime Kuma (monitoring + public `status.` page) | 🚧 in repo, deploy pending | [services/uptime-kuma](../services/uptime-kuma/docker-compose.yml) — independent status page mitigates the PWA failure-state trap; hosts the backup dead-man's-switch |
 | TubeArchivist | 🚧 in progress | (this branch) |
-| Music acquisition pipeline (buy → beets → Jellyfin) | 💭 specced (hand-off) | [MUSIC_ACQUISITION.md](MUSIC_ACQUISITION.md) — ongoing purchase→library workflow (gate #2); existing-library migration stays in coralstack-migrator's `media` module |
+| Music acquisition pipeline (buy → beets → Jellyfin) | 💭 specced (hand-off) | [MUSIC_ACQUISITION.md](MUSIC_ACQUISITION.md) — ongoing purchase→library workflow (gate #2); existing-library migration is a separate member-side tool, home TBD (was planned for the now-archived coralstack-migrator) |
 
 ### Infrastructure
 | Item | Status | Doc |
@@ -119,7 +119,7 @@ Work that doesn't belong to a single phase.
 | Item | Status | Where |
 | ---- | ------ | ----- |
 | Vaultwarden Key Connector (standalone) | 📋 future spinoff repo | [memory](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_key_connector_architecture.md) |
-| Ente CLI (`ente list`) | 🚧 dustindoan/ente fork | tracked in [coralstack-migrator](#related-projects) |
+| Ente CLI (`ente list`) | 🚧 dustindoan/ente fork | see [Related projects](#related-projects) |
 
 ### Positioning / strategy
 | Item | Where |
@@ -132,17 +132,25 @@ Work that doesn't belong to a single phase.
 
 ## Related projects
 
-**[coralstack-migrator](https://github.com/dustindoan/coralstack-migrator)** — Mac-native
-member-side onboarding tool (Rust workspace, CLI + GUI). Apple Photos → Ente today;
-`media` (Jellyfin music import) and `vault` (Vaultwarden import) modules planned as
-sibling subsystems. That repo owns:
+**puddle** (`~/Dev/personal/puddle`, not yet published) — macOS menu-bar "Export
+Drive" for the member-side photo migration (gate #1): an FSKit mount that
+Photos.app exports into; writes flow to Ente and are deleted locally on confirmed
+upload, with staging write-throttled at the syscall level. Extracted from
+coralstack-ente-helper, which proved the pipeline end-to-end (2026-07-11: 956-item
+migration day, 0 failures).
 
-- Photo migration architecture (Takeout sidecars, icloudpd-on-Linux pattern)
-- Ente CLI upstream contribution (Go + Rust POCs)
-- Future Jellyfin music import (`media` subsystem)
-- Future Vaultwarden import (`vault` subsystem)
+**[duckling](https://github.com/dustindoan/duckling)** — headless Ente client:
+ente desktop's own upload/auth/crypto code compiled to a single binary. The upload
+engine puddle supervises; also useful standalone against any museum.
 
-Cross-link target: `coralstack-migrator/docs/ROADMAP.md` (to be created).
+**Ente CLI contribution (`ente list`)** — Go + Rust POCs validated (byte-parity on
+a 31k-photo library); branches `feature/list-command` and `feature/list-command-rust`
+on the dustindoan/ente fork; upstream discussion #10236 awaiting routing.
+
+**Archived: coralstack-migrator** — the earlier Rust/osxphotos migration CLI+GUI,
+superseded by puddle + duckling (2026-07-16). GitHub repo archived; do not resume.
+Its planned `media` (music import) and `vault` (Vaultwarden import) modules have
+no new home yet.
 
 ---
 

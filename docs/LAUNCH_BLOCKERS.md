@@ -30,14 +30,24 @@ Items that, if missing, break the value proposition or risk member trust.
 ### 1. Photos migration end-to-end
 The pitch is "replace iCloud Photos with Ente." Without a working migration path,
 members can't actually switch — the data lives in iCloud, leaving is too painful.
-- **Where it lives:** [coralstack-migrator](https://github.com/dustindoan/coralstack-migrator) (sibling repo). Mac-native CLI + GUI; Apple Photos → Ente pipeline.
-- **Status:** in active development; previous-session branch on bundle ente-rs + require Download Originals.
+- **Where it lives:** **puddle** (`~/Dev/personal/puddle`, not yet published) — a macOS
+  menu-bar "Export Drive": an FSKit mount that Photos.app's "Export Unmodified Originals"
+  writes into, with uploads to Ente (and delete-on-confirm) driven by
+  [duckling](https://github.com/dustindoan/duckling), a headless build of ente
+  desktop's own upload engine. *(The earlier coralstack-migrator / osxphotos Rust
+  tool is archived — superseded, do not resume.)*
+- **Status:** pipeline proven end-to-end 2026-07-11 via puddle's predecessor
+  (coralstack-ente-helper): 956-item migration day, 0 failures. Remaining: validate
+  puddle as a shipped .app bundle (first-run FSKit enablement per
+  `puddle/docs/operations.md`) + one real full-library run through it.
 - **Bar for "done":** one real iCloud library (~30k+ photos) migrated successfully from a member machine, with the result verified in Ente.
 
 ### 2. Music migration + acquisition path
 "Replace Apple Music with Jellyfin" requires both (a) importing the existing library
 and (b) telling members how to acquire new music going forward.
-- **Migration:** future `media` module in coralstack-migrator (per its `lib.rs`). Not started.
+- **Migration:** a future member-side music import tool. Not started, and currently
+  homeless — it was planned as coralstack-migrator's `media` module, but that repo is
+  archived; a new home (possibly alongside puddle/duckling) is TBD.
 - **Acquisition guidance:** documented recommendation — Bandcamp, Qobuz, ripping CDs, etc. Page or section on coralstack.org.
 - **Design / hand-off:** [docs/MUSIC_ACQUISITION.md](MUSIC_ACQUISITION.md) — the
   purchase → ingest → Jellyfin pipeline ("buy an album on-the-go, it appears in
@@ -131,7 +141,7 @@ Items that need answers before site copy is final.
 
 1. **Target audience definition.** ✅ Decided 2026-07-15: the **member/consumer is the primary reader** — the person whose photos and passwords move; host-admins are the secondary audience ("run one for your people"). Voice reference: the maintainer's 2026-06-11 "exits are closing" message (Photos API deprecation, cloud concentration, AI switching costs → sovereignty).
 2. **Pricing / model.** ✅ Decided 2026-07-15: **free OSS + "contact me."** No pricing page, no billing signals; invite-only trials via direct contact. Managed offering deliberately deferred, not foreclosed.
-3. **License posture.** ✅ Decided: AGPL-3.0-only ([LICENSE](../LICENSE), PR #13), matching coralstack-migrator.
+3. **License posture.** ✅ Decided: AGPL-3.0-only ([LICENSE](../LICENSE), PR #13), matching the (since-archived) coralstack-migrator.
 4. **Phase 1 → Phase 2 promotion criteria.** When do you tell a second co-op "yes, you can host this safely"? What's the explicit checklist? Today's framing is "talk to me first" — but at some point that doesn't scale.
 5. **Trademark / branding considerations.** coralstack.org owned. Name distinct enough not to clash? Any concerns to surface before public?
 

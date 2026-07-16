@@ -3,8 +3,9 @@
 > **Status:** 💭 exploration / hand-off doc. No code yet. This frames the
 > problem, the options, and the decisions a future session needs to make *with
 > the admin* before building. It is the substance behind
-> [LAUNCH_BLOCKERS](LAUNCH_BLOCKERS.md) gate #2 (music) and the planned
-> `media` module in [coralstack-migrator](https://github.com/dustindoan/coralstack-migrator).
+> [LAUNCH_BLOCKERS](LAUNCH_BLOCKERS.md) gate #2 (music) and a future member-side
+> music import tool (home TBD — it was planned as coralstack-migrator's `media`
+> module, but that repo is archived).
 
 ## The north star
 
@@ -14,7 +15,8 @@
 
 Two distinct things hide in gate #2:
 1. **Migration** — get the admin's *existing* library onto the stack (one-time;
-   belongs in coralstack-migrator's `media` module, mirrors the photo path).
+   belongs in a member-side import tool, mirroring the photo path — home TBD now
+   that coralstack-migrator is archived).
 2. **Acquisition** — an ongoing *buy → owned → playable* pipeline. **This doc is
    mostly about #2**, which is the more interesting (and more product-shaped)
    problem and the one the admin is excited about.
@@ -156,7 +158,7 @@ rejected). A fetcher that enumerates `getUserPurchases` first and *only* fetches
 those items **can structurally only download things you paid for** — exactly what the
 official Downloader does. Clean by construction, and it runs **headless on Linux /
 in a container** (unlike the GUI Downloader), giving the fully-automatic Qobuz lane.
-This is a small, coralstack-shaped artifact (cf. the Ente upload sidecar / migrator).
+This is a small, coralstack-shaped artifact (cf. duckling / puddle on the photo side).
 
 **Build from:**
 - **[streamrip](https://github.com/nathom/streamrip)** (nathom) — actively maintained
@@ -315,9 +317,10 @@ adding the Bandcamp lane when desired.
    occasional archival buys? (See the ceiling note above.)
 6. **Mobile UX:** which Jellyfin music client (Finamp, Symfonium, official)?
    Confirm the "playable on-the-go" half independent of acquisition.
-7. **Migration vs acquisition:** does the existing-library import belong here or
-   in coralstack-migrator's `media` module? (Probably the migrator; keep this
-   doc focused on ongoing acquisition.)
+7. **Migration vs acquisition:** the existing-library import does *not* belong
+   here — keep this doc focused on ongoing acquisition. It needs a member-side
+   tool of its own (home TBD; it was slated for coralstack-migrator before that
+   repo was archived).
 
 ## Next step
 

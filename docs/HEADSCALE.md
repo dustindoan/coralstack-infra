@@ -74,7 +74,7 @@ The Headscale exposure is additive.
   pre-auth-key model is fine.
 - **Subnet router for member-side reach.** Members today reach services via
   public DNS + Caddy. There's a *future* scenario where members are also on
-  the tailnet (e.g., a member's Mac running coralstack-migrator wants to push
+  the tailnet (e.g., a member's Mac running puddle/duckling wants to push
   files to Ente without going through public DNS). Probably not until Phase 2+.
 - **Backup / DR for Headscale itself.** If Headscale's DB dies, every device
   needs re-enrollment. Belongs in the Phase 1.5 backup work, not as a separate

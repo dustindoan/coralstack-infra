@@ -1,6 +1,6 @@
 services:
   jellyfin:
-    image: jellyfin/jellyfin:10.11.8
+    image: jellyfin/jellyfin:10.11.11
     container_name: jellyfin
     restart: unless-stopped
     # Docker's default nofile soft limit is 1024. A library scan over a few hundred

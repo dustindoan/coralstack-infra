@@ -72,7 +72,7 @@ services:
 
   # ── Dispatcharr (IPTV manager) ──────────────────────────────────────────────
   dispatcharr:
-    image: ghcr.io/dispatcharr/dispatcharr:latest
+    image: ghcr.io/dispatcharr/dispatcharr:0.27.0
     container_name: dispatcharr
     restart: unless-stopped
     # Share the VPN sidecar's network namespace: all of Dispatcharr's traffic

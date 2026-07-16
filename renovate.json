@@ -1,0 +1,44 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Renovate opens bump PRs into the existing branch→PR→merge→git-pull-on-box deploy flow. See docs/APP_UPDATES.md. Auto-merge is deliberately OFF everywhere: this stack holds members' photos and passwords — a human reviews every bump, and deploy to the box is a separate manual step.",
+  "extends": [
+    "config:recommended"
+  ],
+  "timezone": "America/Vancouver",
+  "labels": ["dependencies"],
+  "prConcurrentLimit": 5,
+  "minimumReleaseAge": "3 days",
+  "packageRules": [
+    {
+      "description": "Stateful / identity-critical services: never batch, call them out loudly. A bad update here is a trust event — read the release notes before merging, snapshot/backup before deploying.",
+      "matchPackageNames": [
+        "timshel/oidcwarden",
+        "ghcr.io/pocket-id/pocket-id",
+        "postgres"
+      ],
+      "labels": ["dependencies", "stateful-review-carefully"],
+      "prPriority": 5
+    },
+    {
+      "description": "Postgres: major upgrades require a dump/restore migration, not a tag bump. Only take minor/patch within 15.x.",
+      "matchPackageNames": ["postgres"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    },
+    {
+      "description": "Jellyfin: track stable only — no release candidates (memory: 12.0-rc explicitly rejected).",
+      "matchPackageNames": ["jellyfin/jellyfin"],
+      "ignoreUnstable": true
+    },
+    {
+      "description": "Vaultwarden fork (timshel/oidcwarden) uses vYYYY.M.P-N tags; loose versioning so Renovate can order them.",
+      "matchPackageNames": ["timshel/oidcwarden"],
+      "versioning": "loose"
+    },
+    {
+      "description": "MinIO uses RELEASE.date tags.",
+      "matchPackageNames": ["minio/minio"],
+      "versioning": "regex:^RELEASE\\.(?<major>\\d{4})-(?<minor>\\d{2})-(?<patch>\\d{2})T\\d{2}-\\d{2}-\\d{2}Z$"
+    }
+  ]
+}

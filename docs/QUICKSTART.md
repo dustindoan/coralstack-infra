@@ -26,7 +26,8 @@ so the NUC never needs to be reachable from the public internet.
    OPNsense DDNS for the Phase 1 Proxmox setup). Set **Proxy status: DNS only**
    (grey cloud). The wildcard covers every subdomain Caddy serves, including
    the multiple Ente subdomains (`photos.`, `photos-api.`, `photos-accounts.`,
-   `photos-albums.`, `photos-storage.`) — no per-subdomain records needed.
+   `photos-albums.`, `photos-storage.`) and the `status.` page — no
+   per-subdomain records needed.
 3. Create a **scoped API token** at
    [dash.cloudflare.com/profile/api-tokens](https://dash.cloudflare.com/profile/api-tokens):
    Permissions `Zone → DNS → Edit`, scoped to this zone. Copy it.

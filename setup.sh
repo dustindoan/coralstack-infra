@@ -111,6 +111,7 @@ mkdir -p \
 	"$DATA_PATH/dispatcharr" \
 	"$DATA_PATH/ente/postgres" "$DATA_PATH/ente/museum-data" \
 	"$DATA_PATH/open-webui" \
+	"$DATA_PATH/uptime-kuma" \
 	"$DATA_PATH/backup/staging" "$DATA_PATH/backup/cache" \
 	"$BACKUP_REPO_PATH"
 

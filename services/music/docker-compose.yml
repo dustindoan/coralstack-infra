@@ -1,22 +1,54 @@
-# Music ingest — the deterministic back half of the acquisition pipeline
-# (see docs/MUSIC_ACQUISITION.md). Watches a staging folder, imports drops
-# into the library with beets (tag / art / file), triggers a Jellyfin scan.
+# Music pipeline (see docs/MUSIC_ACQUISITION.md) — two cooperating services:
+#   qobuz-poll   (front half) polls your Qobuz purchases and downloads new
+#                ones into the staging folder, hands-off.
+#   music-ingest (back half)  watches staging, imports drops into the library
+#                with beets (tag / art / file); Jellyfin's real-time monitor
+#                then surfaces them (no API key needed — local ext4 storage).
+# Net effect: buy an album → it appears in Jellyfin a few minutes later.
 #
-# Feed it by dropping DRM-free files into ${STORAGE_PATH}/music-staging:
-#   - Qobuz lane: services/music/qobuz-fetch.py (purchases-only fetcher v0,
-#     run manually with QOBUZ_TOKEN; containerized polling is the front-half
-#     build, still to come)
+# Other ways to feed staging (${STORAGE_PATH}/music-staging):
 #   - Bandcamp lane: BandcampSync (future)
-#   - Manual: scp/rsync anything you own into the staging dir
+#   - Manual: run qobuz-fetch.py by hand, or scp/rsync anything you own in
 #
 # services/music/.env (gitignored) keys:
-#   QOBUZ_TOKEN       — web-session API token for the fetch script
-#   JELLYFIN_API_KEY  — Jellyfin Dashboard → API Keys; optional but without
-#                       it new music waits for Jellyfin's scheduled scan
+#   QOBUZ_TOKEN          — web-session API token (REQUIRED for qobuz-poll).
+#                          Extract from a logged-in play.qobuz.com session;
+#                          see docs/MUSIC_ACQUISITION.md. Refresh = update this
+#                          + `docker compose up -d qobuz-poll`.
+#   QOBUZ_POLL_INTERVAL  — seconds between polls (optional, default 900).
+#   JELLYFIN_API_KEY     — optional; only to force an immediate scan on top of
+#                          Jellyfin's real-time monitoring (usually unneeded).
 #
-# No ports, no Caddy entry: this container has no UI (see ADMIN_ACCESS.md —
+# No ports, no Caddy entry: these containers have no UI (see ADMIN_ACCESS.md —
 # network-only services are already unreachable from outside the stack).
 services:
+  # ── Front half: acquire ────────────────────────────────────────────────
+  qobuz-poll:
+    build:
+      context: .
+      dockerfile: Dockerfile.poll
+    image: coralstack/qobuz-poll:streamrip-2.1.0
+    # Custom-built image — don't try to pull it from a registry.
+    pull_policy: build
+    container_name: qobuz-poll
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      TZ: ${TZ}
+      QOBUZ_DEST: /staging
+      # Persistent watermark of fetched track IDs — survives staging being
+      # drained by music-ingest, so re-polls never re-download.
+      QOBUZ_STATE: /state/fetched.json
+      QOBUZ_POLL_INTERVAL: ${QOBUZ_POLL_INTERVAL:-900}
+    volumes:
+      # Downloads land in the same staging folder music-ingest watches.
+      - ${STORAGE_PATH:?STORAGE_PATH must be set in .env}/music-staging:/staging
+      # Watermark state (survives container + restarts).
+      - ${DATA_PATH:?DATA_PATH must be set in .env — run ./setup.sh}/music/qobuz-state:/state
+
+  # ── Back half: ingest ──────────────────────────────────────────────────
   music-ingest:
     build: .
     image: coralstack/music-ingest:beets-2.12.0

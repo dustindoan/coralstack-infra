@@ -9,20 +9,28 @@ enumerates `purchase/getUserPurchases` and can therefore only ever download
 items you paid for (the same flow as the official Downloader, headless).
 It is NOT a stream-ripper and must never be pointed at streamable content.
 
-v0 is a one-shot: run it after buying, files land in the staging dir, the
-music-ingest container does the rest. The containerized poll loop (front
-half) builds on this same code later.
+Run it after buying and files land in the staging dir; the music-ingest
+container does the rest. The `qobuz-poll` service (see docker-compose.yml)
+runs this same script on a timer for hands-off operation.
 
 Usage:
     QOBUZ_TOKEN=<web-session token>  uv run services/music/qobuz-fetch.py [DEST]
 
 DEST defaults to ./staging-out (locally); on the server point it at
-${STORAGE_PATH}/music-staging. Existing files are skipped, so re-runs are
-cheap and idempotent.
+${STORAGE_PATH}/music-staging.
+
+Idempotency / the watermark: re-runs must NOT re-download. Checking the
+staging dir alone is insufficient because music-ingest MOVES files out of
+staging after import — so on the next poll they'd look "missing" and be
+re-fetched. When QOBUZ_STATE is set (the poll service sets it), successfully
+fetched track IDs are recorded there and skipped forever after, independent
+of whether the file is still in staging. Without QOBUZ_STATE (a plain manual
+run) it falls back to staging-presence only.
 """
 
 import asyncio
 import hashlib
+import json
 import os
 import re
 import sys
@@ -48,6 +56,37 @@ FORMAT_LADDER = [27, 7, 6]
 def sanitize(name: str) -> str:
     """Make a string safe as a single path component."""
     return re.sub(r'[/\\:*?"<>|]', "_", name).strip().rstrip(".")
+
+
+class Watermark:
+    """Persistent set of already-fetched track IDs (survives staging drain).
+
+    No-op when path is None (manual runs). Writes atomically after every
+    successful track so a crash mid-album never re-downloads what landed.
+    """
+
+    def __init__(self, path):
+        self.path = path
+        self.ids = set()
+        if path and os.path.exists(path):
+            try:
+                with open(path) as f:
+                    self.ids = set(json.load(f).get("fetched_track_ids", []))
+            except (json.JSONDecodeError, OSError) as e:
+                print(f"  ! watermark unreadable ({e}); starting empty")
+
+    def __contains__(self, track_id):
+        return str(track_id) in self.ids
+
+    def add(self, track_id):
+        if not self.path:
+            return
+        self.ids.add(str(track_id))
+        os.makedirs(os.path.dirname(self.path), exist_ok=True)
+        tmp = self.path + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump({"fetched_track_ids": sorted(self.ids)}, f)
+        os.rename(tmp, self.path)
 
 
 async def api_get(session: aiohttp.ClientSession, endpoint: str, params: dict):
@@ -109,6 +148,7 @@ async def main() -> int:
         return 2
     dest_root = sys.argv[1] if len(sys.argv) > 1 else "./staging-out"
     os.makedirs(dest_root, exist_ok=True)
+    watermark = Watermark(os.environ.get("QOBUZ_STATE"))
 
     async with QobuzSpoofer() as spoofer:
         app_id, secrets = await spoofer.get_app_id_and_secrets()
@@ -152,7 +192,8 @@ async def main() -> int:
             n = t.get("track_number", 0)
             fname = f"{n:02d} {sanitize(t.get('title', str(t['id'])))}.flac"
             path = os.path.join(album_dir, fname)
-            if os.path.exists(path):
+            # Watermark first (survives staging drain), then staging presence.
+            if t["id"] in watermark or os.path.exists(path):
                 skipped += 1
                 continue
             status, resp = await signed_file_url(session, app_id, secrets, str(t["id"]))
@@ -162,6 +203,7 @@ async def main() -> int:
                 continue
             os.makedirs(album_dir, exist_ok=True)
             size = await download(session, resp["url"], path)
+            watermark.add(t["id"])
             bd, sr = resp.get("bit_depth"), resp.get("sampling_rate")
             print(f"  ✔ {fname} ({size / 1e6:.1f} MB, {bd}bit/{sr}kHz)")
             fetched += 1

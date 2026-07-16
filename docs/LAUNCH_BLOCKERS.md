@@ -44,7 +44,7 @@ and (b) telling members how to acquire new music going forward.
   the collection"), options, and the buy-&-own vs auto-grab decision.
 - **Bar for "done":** a member can rebuild their listening setup end-to-end with documented steps.
 
-### 3. Backups (basic, present) — 🚧 built, restore test pending
+### 3. Backups (basic, present) — 🚧 restore test RUN 2026-07-15; caught critical gap, remediation in flight
 The pitch is "trust this with your family's photos and passwords." Without offsite
 backups, one disk failure becomes a launch-killing story.
 - **Strategy exists** in [memory: backup strategy](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_backup_strategy.md) (3-2-1, RAID ≠ backup, etc.).
@@ -56,8 +56,14 @@ backups, one disk failure becomes a launch-killing story.
   a co-op member's box) — no vendor lock-in, opaque encrypted blobs only. Runbook:
   [docs/BACKUPS.md](BACKUPS.md).
 - **Bar for "done":** one successful restore test from the repo. Procedure is in
-  [BACKUPS.md → Restore test](BACKUPS.md#restore-test-the-gate); **still needs to be
-  run on the apps VM** after deploy.
+  [BACKUPS.md → Restore test](BACKUPS.md#restore-test-the-gate).
+- **2026-07-15 restore test:** dumps restored and validated cleanly, **but the
+  test caught a critical coverage gap** — the deployed `BACKUP_EXCLUDES` excluded
+  all of `/storage`, so the 646 GB of Ente photo blobs had never been in any
+  snapshot. See [BACKUPS.md → Restore-test log](BACKUPS.md#restore-test-log).
+  Remaining to close the gate: deploy the corrected excludes + `/config` secrets
+  mount, run the initial full backup (~646 GB to B2), then re-verify a blob
+  restores.
 
 ### 4. Member onboarding doc
 [docs/ONBOARDING.md](ONBOARDING.md) is admin-facing (OIDC client wiring). There's no

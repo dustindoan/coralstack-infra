@@ -68,7 +68,9 @@ fi
 # ─── Build exclude list ──────────────────────────────────────────────────────
 # Always exclude our own working dir (staging + restic cache + the local repo
 # all live under /data/backup) so the backup never tries to capture itself.
-exclude_args=(--exclude /data/backup)
+# /config/data is the same tree as /data (don't capture it twice) and
+# /config/.git lives on GitHub.
+exclude_args=(--exclude /data/backup --exclude /config/data --exclude /config/.git)
 if [[ -n "${BACKUP_EXCLUDES:-}" ]]; then
 	IFS=',' read -ra _ex <<<"$BACKUP_EXCLUDES"
 	for e in "${_ex[@]}"; do
@@ -80,13 +82,17 @@ fi
 
 # ─── Back up the whole tree ──────────────────────────────────────────────────
 # /staging = fresh DB dumps · /data = service configs + DBs · /storage = the
-# TerraMaster (photo blobs; bulk re-acquirable media excluded by default).
+# TerraMaster (photo blobs; bulk re-acquirable media excluded by default) ·
+# /config = the compose tree incl. the host-only services/*/.env secrets.
+# /config is optional so older deployments without the mount still back up.
+backup_paths=(/staging /data /storage)
+[[ -d /config ]] && backup_paths+=(/config)
 log "Running restic backup → $RESTIC_REPOSITORY"
 restic backup \
 	--tag coralstack \
 	--host "${COMMUNITY:-coralstack}" \
 	"${exclude_args[@]}" \
-	/staging /data /storage
+	"${backup_paths[@]}"
 
 # ─── Retention ───────────────────────────────────────────────────────────────
 log "Applying retention policy (forget --prune)"

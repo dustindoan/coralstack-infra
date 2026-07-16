@@ -37,3 +37,9 @@ services:
       # Local repository target (used when RESTIC_REPOSITORY=/repo, the
       # default). Harmless when RESTIC_REPOSITORY is an rclone: remote.
       - ${BACKUP_REPO_PATH:?BACKUP_REPO_PATH must be set in .env — run ./setup.sh}:/repo
+      # The compose tree itself (this repo checkout), read-only — captures the
+      # hand-created, gitignored services/*/.env secret files that exist ONLY
+      # on this host. Without this, a dead host means re-deriving every
+      # service secret by hand during disaster recovery. backup.sh excludes
+      # /config/data (already mounted at /data) and /config/.git (on GitHub).
+      - ../..:/config:ro

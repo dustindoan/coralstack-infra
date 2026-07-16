@@ -46,10 +46,18 @@ restore source.
 | Vaultwarden DB + attachments/sends/keys | Vaults are E2E-encrypted regardless. |
 | Pocket ID DB + config | Identity provider. |
 | All other service configs under `${DATA_PATH}` | Jellyfin/Dispatcharr/Open WebUI settings, Caddy data, etc. |
+| The compose tree (`/config`), incl. gitignored `services/*/.env` | The hand-created secret files exist **only on this host** — without them a rebuild means re-deriving every service secret while Vaultwarden (which holds them) is itself down. |
 | **Excluded by default** | **Why** |
-| `/storage/music` (Jellyfin library) | Large and *re-acquirable* — members keep originals; music is re-rippable. Sending TBs to metered cloud buys no durability. Flip `BACKUP_EXCLUDES` to include it. |
+| `/storage/music`, `/storage/movies`, `/storage/shows` (media libraries) | Large and *re-acquirable* — members keep originals; music is re-rippable/re-downloadable; recordings can be re-captured. Sending TBs to metered cloud buys no durability. Flip `BACKUP_EXCLUDES` to include them. |
 | `/data/jellyfin/cache` | Transient transcode/image cache. |
 | `/data/backup` | Our own staging + cache + local repo — never capture ourselves. |
+| `/config/data`, `/config/.git` | `/config/data` is the same tree as `/data`; git history lives on GitHub. |
+
+> ⚠️ **Never exclude `/storage` wholesale.** It reads like "skip the big media
+> dirs" but it also silently drops the Ente photo blobs — the one thing the
+> backup exists for. The repo staying suspiciously small (a few GiB) is the
+> tell. The 2026-07-15 restore test caught exactly this in production; see the
+> restore-test log below.
 
 Caddy TLS certs are deliberately **not** treated as precious — they re-issue via
 DNS-01 if lost. Proxmox/OPNsense config is out of scope here (OPNsense config
@@ -166,8 +174,17 @@ docker start vaultwarden
    and any `RCLONE_CONFIG_*` provider creds into `services/backup/.env`, and
    point `RESTIC_REPOSITORY` at the surviving (offsite) repo.
 3. `docker compose up -d backup`, then `docker exec backup restic snapshots` to
-   confirm access, and restore each service per the steps above **before**
-   bringing the rest of the stack up against empty volumes.
+   confirm access.
+4. **Recover the service secrets first**: restore `/config` from the snapshot
+   and copy every `services/*/.env` (plus the root `.env`) back into the fresh
+   checkout. This breaks the bootstrap circle — the secrets are otherwise in
+   Vaultwarden, which is itself one of the services you're trying to restore.
+   ```bash
+   docker exec backup restic restore latest --include /config --target /staging/restore
+   # then copy /staging/restore/config/services/*/.env into place
+   ```
+5. Restore each service's data per the steps above **before** bringing the
+   rest of the stack up against empty volumes.
 
 ## Restore test (the gate)
 
@@ -199,6 +216,12 @@ docker exec backup rm -rf /staging/restore
 
 Run a full restore test **quarterly** (add to the admin agent's duties once
 lettabot is operational). Record the date and outcome.
+
+### Restore-test log
+
+| Date | Outcome |
+| --- | --- |
+| 2026-07-15 | **Dumps: PASS. Coverage: FAIL — test caught a critical gap.** Fresh backup + full scratch restore ran clean; `ente_db.dump` (110 MB) listed valid via `pg_restore --list`, `vaultwarden.sqlite` + `pocket-id.sqlite` opened with expected schemas. But the restore contained **no `/storage` tree**: the deployed `.env` had `BACKUP_EXCLUDES=…,/storage` (vs the documented `/storage/music`), so **646 GB of Ente photo blobs had never been in any snapshot** — repo was 2.5 GiB total. Also found: hand-created `services/*/.env` secrets weren't captured (fixed by the `/config` mount, this change). Remediation: corrected `BACKUP_EXCLUDES` on the box, redeploy + initial ~646 GB B2 upload pending. |
 
 ## Secrets
 

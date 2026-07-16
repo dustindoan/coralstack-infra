@@ -79,9 +79,12 @@ The single most leveraged blocker. Nothing else matters until people arrive.
   strategic decisions baked in (member-first voice, free-OSS + contact-me, Live
   TV omitted). Includes a pre-publish checklist and a claims audit (don't
   publish "restore-tested" before the initial photo backup runs).
-- **Remaining:** decide contact address, build the page (recommendation in the
-  draft: hand-written static page on GitHub Pages at the coralstack.org apex),
-  publish only after SEC-1 + initial photo backup.
+- **Built 2026-07-15:** [site/index.html](../site/index.html) — single static
+  page, deployed by `.github/workflows/pages.yml` (inert until Pages is enabled
+  in repo settings). Contact CTA: dustindoan@proton.me. Publish procedure:
+  [site/README.md](../site/README.md).
+- **Remaining:** enable GitHub Pages + coralstack.org DNS (admin, per
+  site/README.md) — **only after SEC-1 + the initial photo backup**.
 - **Bar for "done":** the page exists, the message is clear, and someone arriving cold knows whether this is for them within 60 seconds.
 
 ### 6. External cold-install test

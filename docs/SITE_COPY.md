@@ -171,7 +171,7 @@ is just another landlord.
 
 **Curious? Skeptical? Want in?**
 Whether you'd join an existing community or host for your own — start with an
-email. *(contact address TBD — maintainer email vs. hello@coralstack.org alias)*
+email. **dustindoan@proton.me** *(decided 2026-07-15: maintainer proton address)*
 
 *[Footer links: GitHub · Roadmap · Member setup guide · License (AGPL-3.0)]*
 
@@ -179,13 +179,18 @@ email. *(contact address TBD — maintainer email vs. hello@coralstack.org alias
 
 ## Publication notes (not site content)
 
-- **Venue recommendation:** static single page on GitHub Pages with the
+- **Built:** [site/index.html](../site/index.html) — single hand-written
+  HTML/CSS file, no framework, no external requests; light/dark via
+  `prefers-color-scheme`, responsive. Deploys to GitHub Pages via
+  `.github/workflows/pages.yml` (inert until Pages is enabled — that settings
+  switch is the publish gate). Publish procedure: [site/README.md](../site/README.md).
+- **Venue (decided):** static single page on GitHub Pages with the
   `coralstack.org` apex — zero coupling to the co-op's production stack, and the
   site staying up is independent of the stack being down (which is the moment
-  people check it). Keep it hand-written HTML/CSS; no framework.
+  people check it).
 - **Pre-publish checklist** (mirrors LAUNCH_BLOCKERS): SEC-1 remediated; initial
   646 GB photo backup completed (the "restore-tested backups" claim above
-  otherwise overstates); contact address decided.
+  otherwise overstates). Contact address ✅ decided: dustindoan@proton.me.
 - **Claims audit:** "restore-tested" = 2026-07-15 DB/config restore test;
   re-verify a photo blob restore after the initial full backup, then this is
   fully true. "We document how" (music acquisition) — the member-facing page for

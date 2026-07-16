@@ -25,13 +25,15 @@ custom image — `restic` + `rclone`, scheduled by `supercronic`. Each night it:
      (custom format → `ente_db.dump`). No Docker socket needed.
    - **Vaultwarden** — SQLite online `.backup` → `vaultwarden.sqlite`.
    - **Pocket ID** — SQLite online `.backup` → `pocket-id.sqlite`.
-2. **Runs one `restic backup`** over the whole on-disk tree:
-   - `/staging` — the fresh, consistent DB dumps
-   - `/data` — every service's config + data (`${DATA_PATH}`, read-only)
-   - `/storage` — the TerraMaster (`${STORAGE_PATH}`, read-only): Ente photo
-     blobs + music
-3. **Applies retention** (`restic forget --prune`) and **verifies** the repo
-   structure (`restic check`).
+2. **Runs `restic backup` as two tagged snapshot streams** (same repo,
+   separate retention — see [Schedule & retention](#schedule--retention)):
+   - **`data` stream** — `/staging` (the fresh, consistent DB dumps), `/data`
+     (every service's config + data, read-only), `/config` (the compose tree
+     incl. host-only `.env` secrets)
+   - **`storage` stream** — `/storage`: the TerraMaster (`${STORAGE_PATH}`,
+     read-only): Ente photo blobs + music
+3. **Applies per-stream retention** (`restic forget --tag …` then one
+   `restic prune`) and **verifies** the repo structure (`restic check`).
 
 The result is "essentially the whole TerraMaster in one repo" **plus** a
 guaranteed-consistent database restore. The database directories under `/data`
@@ -100,9 +102,28 @@ satisfies "backups exist + restore tested."
 
 ## Schedule & retention
 
-- **Schedule:** `BACKUP_CRON` (default `15 3 * * *` — 03:15 in the container TZ).
-- **Retention:** `RESTIC_KEEP_DAILY/WEEKLY/MONTHLY` (default 7 / 4 / 6), applied
-  with `--prune` after each run.
+- **Schedule:** `BACKUP_CRON` (default `15 3 * * *` — 03:15 in the container
+  TZ). The Ente janitor purges deleted photo blobs *after* this runs (05:30) —
+  the ordering is load-bearing; see [ENTE_STORAGE.md](ENTE_STORAGE.md).
+- **Retention (per stream):**
+
+  | Stream | Env | Default | Why |
+  | ------ | --- | ------- | --- |
+  | `data` (dumps, configs, secrets) | `RESTIC_KEEP_DAILY/WEEKLY/MONTHLY` | 7 / 4 / 6 | Tiny; deep history is cheap and every version matters. |
+  | `storage` (photo blobs) | `RESTIC_STORAGE_KEEP_DAILY/WEEKLY/MONTHLY` | 7 / 4 / 0 | Blobs are append-then-delete and client-side encrypted (no dedup across re-uploads). A short tail bounds how long deleted-photo churn lingers in the repo (~a month, vs ~7 months with monthlies). Set a value to 0 to omit that tier. |
+
+  `forget` runs per tag, then a single `prune` reclaims space.
+
+### Migrating from single-stream snapshots (pre-2026-07-16)
+
+Snapshots taken before the stream split carry the old `coralstack` tag and are
+matched by **neither** per-stream `forget`, so they'd linger forever. After the
+split has a few days of history, list and drop them once:
+
+```bash
+docker exec backup restic snapshots --tag coralstack   # legacy only — new streams are tagged data/storage
+docker exec backup restic forget --prune <legacy snapshot IDs>
+```
 
 ## Manual operations
 
@@ -130,12 +151,18 @@ docker exec backup restic ls latest
 
 ### Restore files from a snapshot
 
+> Snapshots come in two tagged streams (`data` and `storage`); a bare
+> `latest` resolves to whichever ran last, so **always pass `--tag`**.
+
 ```bash
-# Restore the whole tree into a scratch dir for inspection:
-docker exec backup restic restore latest --target /staging/restore
+# Restore the data tree (dumps + configs + secrets) into a scratch dir:
+docker exec backup restic restore latest --tag data --target /staging/restore
 
 # Or just one path:
-docker exec backup restic restore latest --include /staging/db --target /staging/restore
+docker exec backup restic restore latest --tag data --include /staging/db --target /staging/restore
+
+# Photo blobs live in the storage stream:
+docker exec backup restic restore latest --tag storage --include /storage/ente-minio --target /staging/restore
 ```
 
 ### Per-service restore
@@ -143,7 +170,7 @@ docker exec backup restic restore latest --include /staging/db --target /staging
 **Ente (Postgres):** copy the dump out and `pg_restore` into a fresh DB.
 
 ```bash
-docker exec backup restic restore latest --include /staging/db/ente_db.dump --target /staging/restore
+docker exec backup restic restore latest --tag data --include /staging/db/ente_db.dump --target /staging/restore
 docker cp backup:/staging/restore/staging/db/ente_db.dump /tmp/ente_db.dump
 # Stop museum so nothing writes during the restore, then restore into ente-postgres:
 docker stop ente-museum
@@ -154,14 +181,15 @@ docker start ente-museum
 ```
 
 **Ente (photo blobs):** the MinIO blobs live under `${STORAGE_PATH}/ente-minio`
-and are restored as files (they're inside the snapshot under `/storage/ente-minio`).
-Restore that path and copy it back into place, then restart `ente-minio`.
+and are restored as files (they're inside the **`storage`-stream** snapshot
+under `/storage/ente-minio`). Restore that path (`--tag storage`) and copy it
+back into place, then restart `ente-minio`.
 
 **Vaultwarden / Pocket ID (SQLite):** restore the `.sqlite` file and drop it in
 place (service stopped), e.g. for Vaultwarden:
 
 ```bash
-docker exec backup restic restore latest --include /staging/db/vaultwarden.sqlite --target /staging/restore
+docker exec backup restic restore latest --tag data --include /staging/db/vaultwarden.sqlite --target /staging/restore
 docker stop vaultwarden
 docker cp backup:/staging/restore/staging/db/vaultwarden.sqlite vaultwarden:/data/db.sqlite3
 docker start vaultwarden
@@ -180,7 +208,7 @@ docker start vaultwarden
    checkout. This breaks the bootstrap circle — the secrets are otherwise in
    Vaultwarden, which is itself one of the services you're trying to restore.
    ```bash
-   docker exec backup restic restore latest --include /config --target /staging/restore
+   docker exec backup restic restore latest --tag data --include /config --target /staging/restore
    # then copy /staging/restore/config/services/*/.env into place
    ```
 5. Restore each service's data per the steps above **before** bringing the
@@ -197,8 +225,8 @@ location**. Procedure:
 docker exec backup backup.sh
 docker exec backup restic snapshots
 
-# 2. Restore everything to a scratch target and confirm the dumps are intact.
-docker exec backup restic restore latest --target /staging/restore
+# 2. Restore the data stream to a scratch target and confirm the dumps are intact.
+docker exec backup restic restore latest --tag data --target /staging/restore
 docker exec backup ls -la /staging/restore/staging/db
 #    Expect: ente_db.dump, vaultwarden.sqlite, pocket-id.sqlite (non-zero size).
 
@@ -210,7 +238,11 @@ docker exec backup sh -c \
 # 4. Prove a SQLite dump opens and has the expected schema:
 docker exec backup sqlite3 /staging/restore/staging/db/vaultwarden.sqlite '.tables'
 
-# 5. Clean up the scratch restore.
+# 5. Prove the storage stream actually contains photo blobs (this is the check
+#    that catches an excludes regression like 2026-07-15's):
+docker exec backup sh -c 'restic ls latest --tag storage /storage/ente-minio | head'
+
+# 6. Clean up the scratch restore.
 docker exec backup rm -rf /staging/restore
 ```
 

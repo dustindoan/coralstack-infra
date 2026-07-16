@@ -80,26 +80,61 @@ if [[ -n "${BACKUP_EXCLUDES:-}" ]]; then
 	done
 fi
 
-# ─── Back up the whole tree ──────────────────────────────────────────────────
-# /staging = fresh DB dumps · /data = service configs + DBs · /storage = the
-# TerraMaster (photo blobs; bulk re-acquirable media excluded by default) ·
-# /config = the compose tree incl. the host-only services/*/.env secrets.
-# /config is optional so older deployments without the mount still back up.
-backup_paths=(/staging /data /storage)
-[[ -d /config ]] && backup_paths+=(/config)
-log "Running restic backup → $RESTIC_REPOSITORY"
+# ─── Back up the tree as TWO snapshot streams ────────────────────────────────
+# Same repo, two tagged streams with separate retention (see BACKUPS.md):
+#   data    = /staging (fresh DB dumps) + /data (service configs + DBs) +
+#             /config (compose tree incl. host-only services/*/.env secrets;
+#             optional so older deployments without the mount still back up).
+#             Deep history — it's tiny and every version matters.
+#   storage = /storage (the TerraMaster: Ente photo blobs; bulk re-acquirable
+#             media excluded by default). Blobs are append-then-delete, never
+#             edited, so deep history buys nothing — short retention bounds
+#             how long deleted-photo churn lingers in the repo. This pairs
+#             with the Ente janitor's short purge window: docs/ENTE_STORAGE.md.
+data_paths=(/staging /data)
+[[ -d /config ]] && data_paths+=(/config)
+log "Running restic backup (data stream) → $RESTIC_REPOSITORY"
 restic backup \
-	--tag coralstack \
+	--tag data \
 	--host "${COMMUNITY:-coralstack}" \
 	"${exclude_args[@]}" \
-	"${backup_paths[@]}"
+	"${data_paths[@]}"
 
-# ─── Retention ───────────────────────────────────────────────────────────────
-log "Applying retention policy (forget --prune)"
-restic forget --prune \
-	--keep-daily   "${RESTIC_KEEP_DAILY:-7}" \
-	--keep-weekly  "${RESTIC_KEEP_WEEKLY:-4}" \
-	--keep-monthly "${RESTIC_KEEP_MONTHLY:-6}"
+log "Running restic backup (storage stream) → $RESTIC_REPOSITORY"
+restic backup \
+	--tag storage \
+	--host "${COMMUNITY:-coralstack}" \
+	"${exclude_args[@]}" \
+	/storage
+
+# ─── Retention (per stream) ──────────────────────────────────────────────────
+# forget both streams first, then prune once (prune is the expensive step).
+# keep_args builds flags conditionally because restic rejects --keep-*=0; a
+# blank/0 var simply omits that tier.
+keep_args() {
+	local daily="$1" weekly="$2" monthly="$3" args=()
+	[[ "${daily:-0}"   -gt 0 ]] && args+=(--keep-daily   "$daily")
+	[[ "${weekly:-0}"  -gt 0 ]] && args+=(--keep-weekly  "$weekly")
+	[[ "${monthly:-0}" -gt 0 ]] && args+=(--keep-monthly "$monthly")
+	(( ${#args[@]} )) && printf '%s\n' "${args[@]}"
+	return 0
+}
+apply_retention() {
+	local tag="$1" daily="$2" weekly="$3" monthly="$4"
+	local -a keep
+	mapfile -t keep < <(keep_args "$daily" "$weekly" "$monthly")
+	if (( ${#keep[@]} == 0 )); then
+		warn "All keep values for '$tag' stream are 0 — skipping forget (refusing to drop every snapshot)"
+		return 0
+	fi
+	log "Applying retention policy ($tag: ${daily}d/${weekly}w/${monthly}m)"
+	restic forget --tag "$tag" "${keep[@]}"
+}
+apply_retention data    "${RESTIC_KEEP_DAILY:-7}" "${RESTIC_KEEP_WEEKLY:-4}" "${RESTIC_KEEP_MONTHLY:-6}"
+apply_retention storage "${RESTIC_STORAGE_KEEP_DAILY:-7}" "${RESTIC_STORAGE_KEEP_WEEKLY:-4}" "${RESTIC_STORAGE_KEEP_MONTHLY:-0}"
+
+log "Pruning unreferenced data"
+restic prune
 
 # ─── Integrity check ─────────────────────────────────────────────────────────
 # Metadata-only (fast). A periodic --read-data-subset is documented in BACKUPS.md.

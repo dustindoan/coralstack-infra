@@ -60,6 +60,8 @@ back into this roadmap and into memory for items that don't yet have docs.
 | Item | Status | Doc |
 | ---- | ------ | --- |
 | Admin access spec (loopback bind + SSH tunnel) | 🚧 drafting | [ADMIN_ACCESS.md](ADMIN_ACCESS.md) |
+| Ente deletion janitor (bounded purge window) | 🚧 in repo, deploy pending | [ENTE_STORAGE.md](ENTE_STORAGE.md) — shrinks Ente's hard-coded 45-day purge queue to N days, post-backup; caps deleted-photo disk churn |
+| Admin panel (loopback action panel) | 🚧 in repo, deploy pending | [services/admin-panel](../services/admin-panel/docker-compose.yml) — purge-pending gauge + "expedite Ente deletions" action; seed of the Phase 1.5 admin front door |
 | Power-loss recovery | ✅ runbook complete | [RECOVERY.md](RECOVERY.md) |
 | Secret tiering (Tier 1 paper / Tier 2 vault) | ✅ convention | [ADMIN_ACCESS.md](ADMIN_ACCESS.md#secret-tiers) |
 

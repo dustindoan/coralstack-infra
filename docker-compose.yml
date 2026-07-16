@@ -12,6 +12,8 @@ include:
   - services/open-webui/docker-compose.yml
   - services/uptime-kuma/docker-compose.yml
   - services/backup/docker-compose.yml
+  - services/ente-janitor/docker-compose.yml
+  - services/admin-panel/docker-compose.yml
 
 # The project's default network is named `coralstack`. Every service in this
 # compose (and every included compose) lands on it automatically, so Caddy

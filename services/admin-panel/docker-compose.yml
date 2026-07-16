@@ -1,0 +1,25 @@
+# CoralStack admin panel — admin-plane action panel (see app.py header for
+# the security model). Follows the ADMIN_ACCESS.md checklist for admin-only
+# services: loopback publish, no Caddy entry, no subdomain, no network alias.
+#
+# Reach (Phase 1): ssh -L 9090:localhost:9090 coralstack-apps
+# then open http://localhost:9090 — registered in docs/ADMIN_ACCESS.md.
+services:
+  admin-panel:
+    build: .
+    image: coralstack/admin-panel:psql15
+    # Custom-built image — don't try to pull it from a registry.
+    pull_policy: build
+    container_name: admin-panel
+    restart: unless-stopped
+    ports:
+      # Loopback ONLY — the admin plane rule. Never widen this bind; tailnet
+      # exposure (Phase 1.5) is additive via the host, not by editing this.
+      - "127.0.0.1:9090:8080"
+    env_file:
+      # Ente Postgres password lives in Ente's secrets — read it there rather
+      # than duplicating the secret (same pattern as services/backup).
+      - path: ../ente/.env
+        required: false
+    environment:
+      TZ: ${TZ}

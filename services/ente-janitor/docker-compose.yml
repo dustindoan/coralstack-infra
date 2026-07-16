@@ -1,0 +1,24 @@
+# Ente deletion janitor — bounds the disk held by Ente's 45-day purge queue.
+# See docs/ENTE_STORAGE.md for the policy (why N days, why post-backup) and
+# janitor.sh for the mechanism. Reaches ente-postgres over the coralstack
+# network; touches ONLY museum's `queue` table — never MinIO, never blobs.
+services:
+  ente-janitor:
+    build: .
+    image: coralstack/ente-janitor:psql15
+    # Custom-built image — don't try to pull it from a registry.
+    pull_policy: build
+    container_name: ente-janitor
+    restart: unless-stopped
+    env_file:
+      # Ente Postgres password lives in Ente's secrets — read it there rather
+      # than duplicating the secret (same pattern as services/backup).
+      # required:false so the stack still comes up if Ente is commented out
+      # (the janitor run just fails loudly, which is correct).
+      - path: ../ente/.env
+        required: false
+      # Hand-created on the box from .env.example (deploy workflow).
+      - path: .env
+        required: false
+    environment:
+      TZ: ${TZ}

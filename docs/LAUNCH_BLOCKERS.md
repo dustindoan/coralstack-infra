@@ -65,12 +65,15 @@ backups, one disk failure becomes a launch-killing story.
   mount, run the initial full backup (~646 GB to B2), then re-verify a blob
   restores.
 
-### 4. Member onboarding doc
-[docs/ONBOARDING.md](ONBOARDING.md) is admin-facing (OIDC client wiring). There's no
-"you, the community member, just got an email — here's how to install your apps and
-set up your passkey" doc. Currently each admin writes this from scratch, per member.
-- **What to write:** `docs/MEMBER_ONBOARDING.md` — Pocket ID passkey setup, Ente mobile install + login, Jellyfin client setup, Bitwarden client setup, "what to do when something doesn't work" (incognito test, contact admin).
-- **Bar for "done":** non-technical household member walks through it unassisted, reaches working state in <30 min.
+### 4. Member onboarding doc — 🚧 doc written 2026-07-15; walkthrough test pending
+[docs/ONBOARDING.md](ONBOARDING.md) is admin-facing (OIDC client wiring). Members
+need a "you just got an invite — here's how to set up your apps" doc.
+- **Written:** [docs/MEMBER_ONBOARDING.md](MEMBER_ONBOARDING.md) — passkey setup,
+  Bitwarden clients (self-hosted URL gotcha), Ente signup + mobile, Jellyfin
+  clients via Quick Connect, AI chat, "when something looks broken" (status page →
+  incognito → admin). Admin prep prerequisites are in its top note (incl. enabling
+  Jellyfin Quick Connect, which native-app SSO sign-in depends on).
+- **Bar for "done":** non-technical household member walks through it unassisted, reaches working state in <30 min. Not yet tested — run it with the next real onboarding and log where they stall.
 
 ### 5. Public site (coralstack.org)
 The single most leveraged blocker. Nothing else matters until people arrive.

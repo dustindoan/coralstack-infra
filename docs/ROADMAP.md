@@ -44,6 +44,7 @@ back into this roadmap and into memory for items that don't yet have docs.
 | Jellyfin | ✅ deployed | [ONBOARDING.md](ONBOARDING.md) |
 | Dispatcharr (IPTV → Jellyfin Live TV) | ✅ deployed (admin-plane) | [services/dispatcharr](../services/dispatcharr/docker-compose.yml), [ADMIN_ACCESS.md](ADMIN_ACCESS.md) |
 | Open WebUI | ✅ deployed (Ollama on Mac mini) | [PROXMOX_MIGRATION.md](PROXMOX_MIGRATION.md) Phase 4c |
+| Uptime Kuma (monitoring + public `status.` page) | 🚧 in repo, deploy pending | [services/uptime-kuma](../services/uptime-kuma/docker-compose.yml) — independent status page mitigates the PWA failure-state trap; hosts the backup dead-man's-switch |
 | TubeArchivist | 🚧 in progress | (this branch) |
 | Music acquisition pipeline (buy → beets → Jellyfin) | 💭 specced (hand-off) | [MUSIC_ACQUISITION.md](MUSIC_ACQUISITION.md) — ongoing purchase→library workflow (gate #2); existing-library migration stays in coralstack-migrator's `media` module |
 

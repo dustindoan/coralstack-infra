@@ -99,3 +99,13 @@ ai.{$BASE_DOMAIN} {
 	import tls_cloudflare
 	reverse_proxy open-webui:8080
 }
+
+# ─── Uptime Kuma (monitoring + public status page) ───────────────────────────
+# Public status page + login-gated admin dashboard (Kuma's own auth). This is
+# the independent "is it actually down?" page members can check when a cached
+# PWA failure state lies to them. See docs/SECURITY_PASS.md for why there's no
+# forward_auth in front (per-service auth; the status page is public by design).
+status.{$BASE_DOMAIN} {
+	import tls_cloudflare
+	reverse_proxy uptime-kuma:3001
+}

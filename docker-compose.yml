@@ -10,6 +10,7 @@ include:
   - services/music/docker-compose.yml
   - services/dispatcharr/docker-compose.yml
   - services/open-webui/docker-compose.yml
+  - services/uptime-kuma/docker-compose.yml
   - services/backup/docker-compose.yml
 
 # The project's default network is named `coralstack`. Every service in this
@@ -60,3 +61,4 @@ services:
           - photos-albums.${BASE_DOMAIN}
           - photos-storage.${BASE_DOMAIN}
           - ai.${BASE_DOMAIN}
+          - status.${BASE_DOMAIN}

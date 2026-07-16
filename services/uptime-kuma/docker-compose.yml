@@ -1,0 +1,23 @@
+# Uptime Kuma — monitoring + the member-facing status page.
+#
+# Two jobs in one service:
+#  1. Admin monitoring dashboard (login-gated by Kuma's own auth) — is every
+#     service up, is the nightly backup still running (dead-man's-switch)?
+#  2. A PUBLIC status page at status.${BASE_DOMAIN}. This is the mitigation for
+#     the PWA failure-state trap (see the pwa-failure-state memory): when a
+#     service worker keeps showing a stale failure after recovery, a member can
+#     check an independent page to see "it's actually back — restart your
+#     browser" instead of concluding CoralStack is down.
+#
+# No forward_auth in front (there's no SSO gate layer yet — see
+# docs/SECURITY_PASS.md): the admin UI is protected by Kuma's own login, and the
+# status page is public by design. Bind the container so the status page has no
+# dependency on the services it reports on (it must survive their outages).
+services:
+  uptime-kuma:
+    image: louislam/uptime-kuma:2.4.0
+    container_name: uptime-kuma
+    restart: unless-stopped
+    volumes:
+      - ${DATA_PATH:?DATA_PATH must be set — run ./setup.sh}/uptime-kuma:/app/data
+    # No published ports — reached only through Caddy on the coralstack network.

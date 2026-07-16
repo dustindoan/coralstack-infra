@@ -1,6 +1,16 @@
 # Keeping services up to date — and the AI-agent question
 
-> **Status:** 💭 exploration / hand-off doc. No code yet. Frames how CoralStack
+> **Status (2026-07-15):** 🚧 step 0 + Renovate config landed. All image tags
+> are pinned except Ente (deliberately floating until the photo migration
+> completes — see the note in `services/ente/docker-compose.yml`), Jellyfin is
+> bumped to 10.11.11 (clears the four outstanding advisories, incl. the HIGH
+> ffmpeg arg injection), and `renovate.json` is in the repo root. **Remaining
+> activation step:** install the Renovate GitHub App on
+> `dustindoan/coralstack-infra` (https://github.com/apps/renovate) — hosted app
+> chosen over self-hosted for now (open question 1): it only ever opens PRs;
+> deploy stays manual-on-box, so sovereignty of the *data path* is unaffected.
+
+> Original framing below. Frames how CoralStack
 > should stay current without breaking a family's photo/password infrastructure,
 > and where a local AI agent (lettabot) does and doesn't belong. Relates to the
 > admin-agent vision in memory (`project_coralstack_admin_agent`) and the

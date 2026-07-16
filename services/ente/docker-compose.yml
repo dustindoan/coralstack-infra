@@ -14,6 +14,11 @@
 
 services:
   ente-museum:
+    # ENTE_*_VERSION is still `latest` in the deployed .env: Ente is
+    # mid-photo-migration, and the server must not change under an active
+    # upload (see docs/APP_UPDATES.md step 0). Pin to an explicit version —
+    # and move the tag in-repo so Renovate can see it — once migration
+    # completes.
     image: ghcr.io/ente-io/server:${ENTE_SERVER_VERSION}
     container_name: ente-museum
     restart: unless-stopped
@@ -37,7 +42,7 @@ services:
   # bucket has its own real endpoint); socat makes that resolve to MinIO. Don't
   # drop this — without it museum's S3 ops get connection-refused.
   ente-socat:
-    image: alpine/socat
+    image: alpine/socat:1.8.0.3
     container_name: ente-socat
     restart: unless-stopped
     network_mode: service:ente-museum
@@ -71,7 +76,7 @@ services:
       - ${DATA_PATH:?DATA_PATH must be set in .env — run ./setup.sh which resolves it to an absolute path}/ente/postgres:/var/lib/postgresql/data
 
   ente-minio:
-    image: minio/minio
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     container_name: ente-minio
     restart: unless-stopped
     environment:

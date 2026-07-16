@@ -163,6 +163,13 @@ Admin → Plugins → SSO-Auth → Add Provider:
 The login URL becomes `https://media.${BASE_DOMAIN}/sso/OID/start/pocket-id` —
 add a link to it from the Jellyfin login page via the branding settings.
 
+**Enable Quick Connect** (Dashboard → General → "Enable Quick Connect on this
+server" — off by default). The SSO plugin's browser redirect can't run inside the
+native Jellyfin apps (mobile/TV), so Quick Connect is the documented sign-in path
+for them: the app shows a code, the member approves it from a browser session
+that's already SSO'd. [MEMBER_ONBOARDING.md](MEMBER_ONBOARDING.md) walks members
+through that flow and assumes the toggle is on.
+
 ### Open WebUI
 
 Edit `services/open-webui/.env` and paste the credentials from Pocket ID:
@@ -271,6 +278,11 @@ toggle dance above is the supported flow.
 5. **For Ente Photos:** see [Per-member onboarding](#per-member-onboarding) above. Ente is the one service that doesn't auto-provision via SSO — needs the disable-registration toggle dance.
 
 Budget ~30 minutes per new member for hand-holding the first time across the full stack. Most of that is explaining the two-credential model below + the Ente exception, not technical setup.
+
+The member-facing walkthrough of all of the above is
+[MEMBER_ONBOARDING.md](MEMBER_ONBOARDING.md) — send that to the new member; this
+doc stays the admin-side reference. Its "Note for your admin" box lists the
+prep steps (Pocket ID user, Ente registration toggle, Quick Connect).
 
 ## The "two-credential" model for members
 

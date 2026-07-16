@@ -75,9 +75,19 @@ need a "you just got an invite — here's how to set up your apps" doc.
   Jellyfin Quick Connect, which native-app SSO sign-in depends on).
 - **Bar for "done":** non-technical household member walks through it unassisted, reaches working state in <30 min. Not yet tested — run it with the next real onboarding and log where they stall.
 
-### 5. Public site (coralstack.org)
+### 5. Public site (coralstack.org) — 🚧 copy drafted 2026-07-15
 The single most leveraged blocker. Nothing else matters until people arrive.
 - **At minimum:** landing page with the message, what's in/out comparison table, "interested? contact me" CTA, links to this repo + RoadMap.
+- **Drafted:** [docs/SITE_COPY.md](SITE_COPY.md) — full page copy with the three
+  strategic decisions baked in (member-first voice, free-OSS + contact-me, Live
+  TV omitted). Includes a pre-publish checklist and a claims audit (don't
+  publish "restore-tested" before the initial photo backup runs).
+- **Built 2026-07-15:** [site/index.html](../site/index.html) — single static
+  page, deployed by `.github/workflows/pages.yml` (inert until Pages is enabled
+  in repo settings). Contact CTA: dustindoan@proton.me. Publish procedure:
+  [site/README.md](../site/README.md).
+- **Remaining:** enable GitHub Pages + coralstack.org DNS (admin, per
+  site/README.md) — **only after SEC-1 + the initial photo backup**.
 - **Bar for "done":** the page exists, the message is clear, and someone arriving cold knows whether this is for them within 60 seconds.
 
 ### 6. External cold-install test
@@ -95,8 +105,10 @@ audit. Full results: [docs/SECURITY_PASS.md](SECURITY_PASS.md).
   port 53 — remotely abusable for DNS-amplification DDoS and IP blocklisting,
   zero credentials needed. Fix is an OPNsense Unbound interface/ACL change (see
   SECURITY_PASS.md). **This is the top blocker ahead of any public link.**
-- **Bar for "done":** SEC-1 remediated and re-verified from off-net; Dispatcharr
-  public-story decision made (feeds gate #5 copy).
+- **Dispatcharr public story:** ✅ decided 2026-07-15 — **omitted from the
+  public site entirely.** The site's feature story is photos / passwords /
+  media / AI; Live TV stays un-marketed (repo remains public as-is).
+- **Bar for "done":** SEC-1 remediated and re-verified from off-net.
 
 ## Honest-disclosure items (acknowledged, not gates)
 
@@ -117,9 +129,9 @@ is worse than acknowledgment.
 
 Items that need answers before site copy is final.
 
-1. **Target audience definition.** Community organizers? Cooperative housing? Friend groups? Tech-savvy households? The site copy depends on which of these is primary.
-2. **Pricing / model.** Free OSS only? Paid managed offering (CoralStack-as-a-Service)? Donations? Affects positioning and trademark posture.
-3. **License posture.** coralstack-migrator is AGPL-3.0-only. coralstack-infra has no LICENSE file currently. What's the choice — AGPL, MIT, MPL? Worth deciding before public links.
+1. **Target audience definition.** ✅ Decided 2026-07-15: the **member/consumer is the primary reader** — the person whose photos and passwords move; host-admins are the secondary audience ("run one for your people"). Voice reference: the maintainer's 2026-06-11 "exits are closing" message (Photos API deprecation, cloud concentration, AI switching costs → sovereignty).
+2. **Pricing / model.** ✅ Decided 2026-07-15: **free OSS + "contact me."** No pricing page, no billing signals; invite-only trials via direct contact. Managed offering deliberately deferred, not foreclosed.
+3. **License posture.** ✅ Decided: AGPL-3.0-only ([LICENSE](../LICENSE), PR #13), matching coralstack-migrator.
 4. **Phase 1 → Phase 2 promotion criteria.** When do you tell a second co-op "yes, you can host this safely"? What's the explicit checklist? Today's framing is "talk to me first" — but at some point that doesn't scale.
 5. **Trademark / branding considerations.** coralstack.org owned. Name distinct enough not to clash? Any concerns to surface before public?
 

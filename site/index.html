@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CoralStack — your photos, on hardware your community owns</title>
+<meta name="description" content="CoralStack is an open-source template for replacing iCloud Photos, your password manager, your music library, and your AI chat — with services running on hardware your community owns.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🪸</text></svg>">
+<style>
+  :root {
+    --bg: #faf7f3;
+    --bg-raised: #ffffff;
+    --ink: #22272b;
+    --ink-soft: #5b6570;
+    --accent: #cc4a37;
+    --accent-ink: #ffffff;
+    --line: #e5ddd3;
+    --ok: #2e7d4f;
+    --no: #a4653a;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16191c;
+      --bg-raised: #1e2226;
+      --ink: #e9e4dc;
+      --ink-soft: #a3a8ad;
+      --accent: #f0765f;
+      --accent-ink: #1c1210;
+      --line: #31363b;
+      --ok: #7fc79c;
+      --no: #d8a377;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 17px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3 { font-family: Georgia, "Times New Roman", serif; line-height: 1.2; letter-spacing: -0.01em; }
+  a { color: var(--accent); }
+  .wrap { max-width: 44rem; margin: 0 auto; padding: 0 1.25rem; }
+  .wrap-wide { max-width: 66rem; margin: 0 auto; padding: 0 1.25rem; }
+  section { padding: 4.5rem 0; }
+  section + section { border-top: 1px solid var(--line); }
+  h2 { font-size: 2rem; margin: 0 0 1.5rem; }
+  p { margin: 0 0 1.1rem; }
+  .muted { color: var(--ink-soft); }
+
+  /* Hero */
+  .hero { min-height: 88vh; display: flex; align-items: center; border-bottom: 1px solid var(--line); }
+  .hero .kicker { font-size: 1rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); font-weight: 600; margin-bottom: 1.25rem; }
+  .hero h1 { font-size: clamp(2.3rem, 6vw, 3.6rem); margin: 0 0 0.75rem; }
+  .hero .thesis { font-family: Georgia, serif; font-size: clamp(1.25rem, 3vw, 1.6rem); font-style: italic; color: var(--ink-soft); margin: 0 0 1.75rem; }
+  .hero .intro { font-size: 1.1rem; max-width: 38rem; }
+  .btns { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 2rem; }
+  .btn {
+    display: inline-block; padding: 0.7rem 1.3rem; border-radius: 999px;
+    text-decoration: none; font-weight: 600; font-size: 1rem;
+    border: 1.5px solid var(--accent); color: var(--accent); background: transparent;
+  }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); }
+  .btn:hover { filter: brightness(1.08); }
+
+  /* Cards */
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); gap: 1.1rem; margin-top: 2rem; }
+  .card { background: var(--bg-raised); border: 1px solid var(--line); border-radius: 12px; padding: 1.4rem 1.4rem 1.2rem; }
+  .card h3 { margin: 0 0 0.5rem; font-size: 1.2rem; }
+  .card p { margin: 0 0 0.6rem; font-size: 0.97rem; }
+  .card .by { font-size: 0.82rem; color: var(--ink-soft); margin: 0; }
+
+  /* Table */
+  .table-scroll { overflow-x: auto; margin-top: 2rem; }
+  table { border-collapse: collapse; width: 100%; min-width: 34rem; background: var(--bg-raised); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; font-size: 0.97rem; }
+  th, td { text-align: left; padding: 0.8rem 1rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  th { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-soft); }
+  td.yes::before { content: "✅ "; }
+  td.not::before { content: "❌ "; }
+
+  /* Steps */
+  ol.steps { counter-reset: step; list-style: none; padding: 0; margin: 2rem 0 0; display: grid; gap: 1rem; }
+  ol.steps li { position: relative; padding-left: 3.2rem; }
+  ol.steps li::before {
+    counter-increment: step; content: counter(step);
+    position: absolute; left: 0; top: 0.05rem;
+    width: 2.2rem; height: 2.2rem; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--accent); color: var(--accent-ink);
+    font-family: Georgia, serif; font-size: 1.1rem; font-weight: 700;
+  }
+
+  /* Honest list */
+  ul.honest { list-style: none; padding: 0; margin: 1.5rem 0 0; display: grid; gap: 0.9rem; }
+  ul.honest li { padding-left: 1.4rem; position: relative; }
+  ul.honest li::before { content: "—"; position: absolute; left: 0; color: var(--accent); }
+
+  /* FAQ */
+  details { border: 1px solid var(--line); border-radius: 10px; background: var(--bg-raised); margin-bottom: 0.75rem; padding: 0; }
+  summary { cursor: pointer; font-weight: 600; padding: 0.9rem 1.1rem; list-style: none; }
+  summary::-webkit-details-marker { display: none; }
+  summary::before { content: "+"; color: var(--accent); font-weight: 700; margin-right: 0.6rem; }
+  details[open] summary::before { content: "–"; }
+  details .a { padding: 0 1.1rem 1rem; }
+  details .a p { margin: 0; }
+
+  /* Contact */
+  .contact { text-align: center; }
+  .contact h2 { font-size: 2.2rem; }
+  .contact .email { font-size: 1.15rem; }
+
+  footer { border-top: 1px solid var(--line); padding: 2rem 0 3rem; font-size: 0.9rem; color: var(--ink-soft); }
+  footer nav { display: flex; flex-wrap: wrap; gap: 1.25rem; margin-bottom: 0.75rem; }
+  footer a { color: var(--ink-soft); }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="kicker">🪸 CoralStack</div>
+    <h1>Your photos, on hardware your community owns.</h1>
+    <p class="thesis">That's the actual alternative.</p>
+    <p class="intro">CoralStack is an open-source template for replacing iCloud Photos, your
+    password manager, your music library, and your AI chat — with services running on a small
+    computer in someone's home. Someone you know. Built for households, friend groups, and co-ops.</p>
+    <div class="btns">
+      <a class="btn primary" href="#what-you-get">What you get</a>
+      <a class="btn" href="mailto:dustindoan@proton.me?subject=CoralStack">Interested? Talk to us</a>
+      <a class="btn" href="https://github.com/dustindoan/coralstack-infra">GitHub</a>
+    </div>
+  </div>
+</header>
+
+<section id="why">
+  <div class="wrap">
+    <h2>The exits are closing</h2>
+    <p>Privacy is the reason everyone states. It's real. But something quieter is also happening:
+    the doors out are being locked. Google deprecated the Photos Library API in 2025 — the
+    interface that let other software read your own photo library. Cloud infrastructure keeps
+    <a href="https://www.cbc.ca/news/business/cloud-computing-competition-9.7219996">consolidating
+    into a handful of providers</a>, and the same pattern is repeating with AI — once your photos,
+    passwords, and daily reasoning live inside someone else's model and someone else's datacenter,
+    the switching cost becomes everything you do.</p>
+    <p>The fix isn't a better subscription. It's boring, durable ownership: open-source software,
+    end-to-end encryption, and hardware that belongs to your community.</p>
+    <p><strong>Your photos, on your own hardware. A small step — but it's the actual alternative,
+    not a different landlord.</strong></p>
+  </div>
+</section>
+
+<section id="what-you-get">
+  <div class="wrap-wide">
+    <div class="wrap" style="padding:0"><h2>What you get</h2></div>
+    <div class="cards">
+      <div class="card">
+        <h3>📷 Photos</h3>
+        <p>Your camera roll backs up automatically, end-to-end encrypted. Not even the server can
+        see your pictures. Albums, sharing, search — on all your devices.</p>
+        <p class="by">powered by Ente</p>
+      </div>
+      <div class="card">
+        <h3>🔑 Passwords</h3>
+        <p>A full password manager with apps for every phone and browser, autofill included. Your
+        vault is encrypted with a passphrase only you know.</p>
+        <p class="by">powered by Vaultwarden, Bitwarden-compatible</p>
+      </div>
+      <div class="card">
+        <h3>🎬 Movies, TV &amp; music</h3>
+        <p>Your community's media library, streaming to your phone, laptop, and TV. Your music
+        collection lives here too — owned, not rented.</p>
+        <p class="by">powered by Jellyfin</p>
+      </div>
+      <div class="card">
+        <h3>🤖 Private AI chat</h3>
+        <p>A capable AI assistant running on community hardware with open models. Conversations
+        never leave the building.</p>
+        <p class="by">powered by Open WebUI</p>
+      </div>
+      <div class="card">
+        <h3>👆 One login</h3>
+        <p>A passkey: your fingerprint or face, no passwords to remember, nothing to phish. Every
+        service above accepts it.</p>
+        <p class="by">powered by Pocket ID</p>
+      </div>
+      <div class="card">
+        <h3>🟢 A straight answer when something breaks</h3>
+        <p>A public status page shows exactly what's up and what's down. No "we're aware of an
+        issue."</p>
+        <p class="by">powered by Uptime Kuma</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="replaces">
+  <div class="wrap">
+    <h2>What it replaces — and what it doesn't</h2>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>You use today</th><th>CoralStack today</th></tr></thead>
+        <tbody>
+          <tr><td>iCloud / Google Photos</td><td class="yes">Ente — e2ee photo backup, sharing, search</td></tr>
+          <tr><td>1Password / iCloud Keychain</td><td class="yes">Vaultwarden — full Bitwarden apps</td></tr>
+          <tr><td>Apple Music (your library)</td><td class="yes">Jellyfin — your owned collection, streamed</td></tr>
+          <tr><td>ChatGPT-style assistant</td><td class="yes">Open WebUI + open models</td></tr>
+          <tr><td>Spotify-style catalogs</td><td class="not">Plays what you own. Buy from Bandcamp/Qobuz, rip CDs — guidance coming</td></tr>
+          <tr><td>iCloud Contacts &amp; Calendar</td><td class="not">Not yet. Keep iCloud for these, or self-host Baikal/Radicale alongside</td></tr>
+          <tr><td>iCloud Drive / file sync</td><td class="not">Not yet. Syncthing or Seafile work alongside if you need it</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:1.25rem">No lock-in in either direction: photos, passwords, and media all
+    export in standard formats. Leaving CoralStack is documented the same as joining.</p>
+  </div>
+</section>
+
+<section id="how">
+  <div class="wrap">
+    <h2>How it works</h2>
+    <ol class="steps">
+      <li>One small, dedicated computer lives at a member's home.</li>
+      <li>Your community gets its own domain; every service is a subdomain of it.</li>
+      <li>You sign in to everything with one passkey.</li>
+      <li>Encrypted backups go off-site nightly — and we've tested restoring them.</li>
+    </ol>
+    <p style="margin-top:1.75rem">Everything in the stack is open source, and the whole
+    configuration is public: <a href="https://github.com/dustindoan/coralstack-infra">the
+    CoralStack repo</a>.</p>
+  </div>
+</section>
+
+<section id="honest">
+  <div class="wrap">
+    <h2>Honest expectations</h2>
+    <p>CoralStack is <strong>early-stage</strong>. One community runs it today, operated by the
+    maintainer. If that excites rather than worries you, you're the audience.</p>
+    <ul class="honest">
+      <li><strong>Joining is high-touch.</strong> A real person (your host-admin) sets you up — the
+      guided path takes about 30 minutes per member, and someone is there for it.</li>
+      <li><strong>It's one machine.</strong> Maintenance windows happen. The status page will
+      always tell you the truth about what's down.</li>
+      <li><strong>Some things aren't replaced yet</strong> — contacts, calendar, and file sync are
+      the honest gaps (see the table above).</li>
+      <li><strong>We diverge from defaults deliberately.</strong> Where standard home-server
+      defaults assume "hobby project," we've hardened for "my community depends on this" — and we
+      document every divergence.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="host">
+  <div class="wrap">
+    <h2>Run one for your people</h2>
+    <p>Everything the maintainer's community runs is in one public repo: infrastructure as code,
+    setup script, runbooks, backup and recovery procedures, onboarding guides for you and your
+    members.</p>
+    <p>You'd need: a dedicated mini-PC (never your daily-driver machine), Ubuntu Server, a domain,
+    a weekend to set up, and the temperament to be your community's sysadmin. AGPL-3.0 — free,
+    forever, copyleft.</p>
+    <p><strong>Talk to us before you deploy.</strong> Not because you must — because the install
+    has so far been run by one person, and you'd be among the first to change that. We want to
+    hear where it breaks.</p>
+    <div class="btns">
+      <a class="btn" href="https://github.com/dustindoan/coralstack-infra/blob/main/docs/QUICKSTART.md">Read the quickstart</a>
+      <a class="btn" href="mailto:dustindoan@proton.me?subject=CoralStack%20hosting">Contact the maintainer</a>
+    </div>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="wrap">
+    <h2>FAQ</h2>
+    <details>
+      <summary>Why not just Nextcloud?</summary>
+      <div class="a"><p>Nextcloud is one app trying to be everything. CoralStack composes the best
+      dedicated open-source app for each job — Ente for photos, Vaultwarden for passwords, Jellyfin
+      for media — behind one login. Different trade-off, more moving parts, better apps. Both are
+      legitimate; this is ours.</p></div>
+    </details>
+    <details>
+      <summary>Is my data actually safe there?</summary>
+      <div class="a"><p>Photos and passwords are end-to-end encrypted — the person running the
+      server cannot read them, by design, ever. Backups are nightly, encrypted, off-site, and
+      restore-tested. And your host is someone you know, accountable to you at the dinner table —
+      not a support queue.</p></div>
+    </details>
+    <details>
+      <summary>What does it cost?</summary>
+      <div class="a"><p>The software is free and open source. Real costs: the hardware (~a
+      mini-PC), a domain, and off-site backup storage — typically split across the community.
+      There's no company here, no accounts, no billing.</p></div>
+    </details>
+    <details>
+      <summary>What happens if the hardware dies?</summary>
+      <div class="a"><p>Backups + a documented rebuild procedure. The recovery runbooks are
+      <a href="https://github.com/dustindoan/coralstack-infra/blob/main/docs/RECOVERY.md">public in
+      the repo</a> — judge them yourself.</p></div>
+    </details>
+    <details>
+      <summary>Can I leave?</summary>
+      <div class="a"><p>Yes, and it's documented. Ente exports your originals, Bitwarden vaults
+      export to standard formats, media files are just files. An alternative you can't leave is
+      just another landlord.</p></div>
+    </details>
+  </div>
+</section>
+
+<section id="contact" class="contact">
+  <div class="wrap">
+    <h2>Curious? Skeptical? Want in?</h2>
+    <p>Whether you'd join an existing community or host for your own — start with an email.</p>
+    <p class="email"><a href="mailto:dustindoan@proton.me?subject=CoralStack">dustindoan@proton.me</a></p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <nav>
+      <a href="https://github.com/dustindoan/coralstack-infra">GitHub</a>
+      <a href="https://github.com/dustindoan/coralstack-infra/blob/main/docs/ROADMAP.md">Roadmap</a>
+      <a href="https://github.com/dustindoan/coralstack-infra/blob/main/docs/MEMBER_ONBOARDING.md">Member setup guide</a>
+      <a href="https://github.com/dustindoan/coralstack-infra/blob/main/LICENSE">License (AGPL-3.0)</a>
+    </nav>
+    <p>🪸 CoralStack — open-source, self-hosted, community-owned.</p>
+  </div>
+</footer>
+
+</body>
+</html>

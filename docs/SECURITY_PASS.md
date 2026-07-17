@@ -12,7 +12,7 @@ internet can see and reach, plus a repo-history secrets audit.
 | Git history secrets | ✅ **Clean** — `gitleaks` over all 57 commits, no leaks. |
 | Published container ports | ✅ Only Caddy `443` (+ `443/udp` HTTP/3). Dispatcharr bound to `127.0.0.1:9191`. |
 | Per-service auth | ✅ Every web-exposed service self-authenticates (see table below). |
-| WAN port scan | ⚠️ **Open recursive DNS resolver on `53/tcp`+`udp`** — see finding SEC-1. |
+| WAN port scan | ✅ **SEC-1 remediated + re-verified from off-net 2026-07-16** — see the finding's remediation log. |
 | Vaultwarden signups | ✅ `SIGNUPS_ALLOWED=false`, invitation-only. |
 
 ## Findings
@@ -46,6 +46,29 @@ is already a documented compromise.
 
 Until fixed, this is the top item ahead of any public link — it's remotely
 abusable with zero credentials.
+
+**Remediation log — 2026-07-16, CLOSED.** All three layers applied, root cause
+identified, verified from off-net:
+
+1. **Listener removed:** Unbound Network Interfaces restricted to internal
+   interfaces; WAN removed. Internal resolution verified intact from the apps
+   VM afterward (`dig @10.0.0.1` answered).
+2. **ACLs added:** Unbound Access Lists now allow only the internal ranges;
+   unmatched sources are refused even if the listener list ever regresses.
+3. **Root cause found:** a hand-added WAN pass rule — *"Allow DNS from family
+   LAN to OPNsense Unbound"* (TCP/UDP 53, source `192.168.4.0/24` →
+   This Firewall). The source restriction **looked** safe but wasn't: OPNsense
+   sits behind the eero's NAT, and traffic the eero sends toward OPNsense can
+   arrive source-rewritten into the "trusted" `192.168.4.0/24` range — so the
+   rule effectively passed internet-originated queries. **Lesson for host
+   admins: behind an upstream NAT, source-based trust in the inner firewall is
+   unsound — the outer NAT can launder any source into your trusted range.**
+   The rule was not part of any documented design (nothing in the runbooks or
+   the deployed stack depends on it) and is deleted.
+4. **Upstream checked:** the eero forwards only `443` to the OPNsense WAN IP —
+   no 53 forward, no DMZ.
+5. **Off-net verification:** `dig @38.175.158.9 google.com` from an external
+   vantage point now **times out** (previously: six A records with `ra` set).
 
 ## Auth-coverage map (Caddy edge)
 

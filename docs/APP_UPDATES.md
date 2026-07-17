@@ -34,6 +34,11 @@ Updates are **fully manual** today: bump the tag, `docker compose pull && up -d`
 eyeball health. The deploy path is the established **branch → PR → merge → `git
 pull` on the apps VM**.
 
+> This doc is the **detection** half of the update loop (Renovate → PR). The
+> **deployment** half — turning a merged PR into a running container safely, and
+> closing the *merged-but-not-deployed* gap with a deploy primitive + admin-panel
+> button — is specced in [DEPLOY_ARCHITECTURE.md](DEPLOY_ARCHITECTURE.md).
+
 Version pinning is **inconsistent** — and that's the first thing to fix, because
 PR-based updates require pinned, in-repo tags:
 

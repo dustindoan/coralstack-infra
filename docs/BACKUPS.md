@@ -253,7 +253,7 @@ lettabot is operational). Record the date and outcome.
 
 | Date | Outcome |
 | --- | --- |
-| 2026-07-15 | **Dumps: PASS. Coverage: FAIL — test caught a critical gap.** Fresh backup + full scratch restore ran clean; `ente_db.dump` (110 MB) listed valid via `pg_restore --list`, `vaultwarden.sqlite` + `pocket-id.sqlite` opened with expected schemas. But the restore contained **no `/storage` tree**: the deployed `.env` had `BACKUP_EXCLUDES=…,/storage` (vs the documented `/storage/music`), so **646 GB of Ente photo blobs had never been in any snapshot** — repo was 2.5 GiB total. Also found: hand-created `services/*/.env` secrets weren't captured (fixed by the `/config` mount, this change). Remediation: corrected `BACKUP_EXCLUDES` on the box, redeploy + initial ~646 GB B2 upload pending. |
+| 2026-07-15 | **Dumps: PASS. Coverage: FAIL — test caught a critical gap.** Fresh backup + full scratch restore ran clean; `ente_db.dump` (110 MB) listed valid via `pg_restore --list`, `vaultwarden.sqlite` + `pocket-id.sqlite` opened with expected schemas. But the restore contained **no `/storage` tree**: the deployed `.env` had `BACKUP_EXCLUDES=…,/storage` (vs the documented `/storage/music`), so **646 GB of Ente photo blobs had never been in any snapshot** — repo was 2.5 GiB total. Also found: hand-created `services/*/.env` secrets weren't captured (fixed by the `/config` mount, this change). Remediation: corrected `BACKUP_EXCLUDES` on the box, redeploy + initial ~646 GB B2 upload pending. *(Update 2026-07-16: excludes corrected + split-stream container deployed; the [Ente purge-queue drain](ENTE_STORAGE.md) cut the initial seed to ~242 GB. Side effect discovered: this test's downloads blew the B2 download cap and silently killed the next night's backup — see [Troubleshooting](#b2-the-download-cap-masquerades-as-a-500).)* |
 
 ## Secrets
 
@@ -276,8 +276,63 @@ costs access to the *destination*, not the data, and they can be re-issued.
 | `ENTE_DB_PASSWORD unset — skipping Ente Postgres dump` | `services/ente/.env` missing or Ente not deployed. The compose reads it via `env_file: ../ente/.env`. |
 | `unable to open repository` on an rclone target | Check `RCLONE_CONFIG_*` env vars; test with `docker exec backup rclone lsd offsite:`. |
 | `repository is already locked` | A previous run died mid-flight. `docker exec backup restic unlock`. |
+| restic reports `unexpected HTTP response (500)` against a B2 target, retrying forever | Often **not a B2 outage** — the real error is hidden two layers down. See [B2: the download cap masquerades as a 500](#b2-the-download-cap-masquerades-as-a-500). |
 | Backup runs but nobody notices it failed | Set `HEALTHCHECK_URL` to a healthchecks.io / Uptime Kuma push URL (dead-man's-switch). |
 | Repo bloats unexpectedly | Confirm `BACKUP_EXCLUDES` covers music; check `docker exec backup restic stats`. |
+
+### B2: the download cap masquerades as a 500
+
+*(Diagnosed 2026-07-16 after a 24-hour silent backup outage. The logs actively
+lie about this failure mode — read this before trusting them.)*
+
+**Symptom:** every restic operation against the B2 repo fails or hangs with
+`Stat(<config/>) returned error … unexpected HTTP response (500)`, retrying
+with backoff forever. Backblaze's status page is green. `rclone lsd` /
+`rclone ls` work fine.
+
+**Actual cause:** the account's **daily download cap (Class B transactions)**
+is exceeded. B2 returns `403 download_cap_exceeded`, but two layers mask it:
+
+1. restic doesn't speak B2 here — it spawns `rclone serve restic --stdio`,
+   which translates the 403 into a generic **500** before restic sees it.
+2. `rclone cat` on an affected object returns **exit 0 with zero bytes and no
+   error at all** — it silently swallows the 403.
+
+The only honest answer comes from the B2 API directly. From inside the
+container (uses the same key; prints the real error body):
+
+```bash
+docker exec backup sh -c '
+  AUTH=$(curl -s -u "$RCLONE_CONFIG_OFFSITE_ACCOUNT:$RCLONE_CONFIG_OFFSITE_KEY" \
+    https://api.backblazeb2.com/b2api/v3/b2_authorize_account)
+  TOK=$(echo "$AUTH" | tr "," "\n" | grep authorizationToken | sed -E "s/.*: ?\"([^\"]*)\".*/\1/")
+  DL=$(echo  "$AUTH" | tr "," "\n" | grep downloadUrl        | sed -E "s/.*: ?\"([^\"]*)\".*/\1/")
+  curl -s -w "\nHTTP=%{http_code}\n" -H "Authorization: $TOK" \
+    "$DL/file/<bucket>/restic/config"'
+```
+
+`{"code": "download_cap_exceeded", …}` confirms it. Key facts:
+
+- **Caps reset at 00:00 UTC** (17:00 PDT / 16:00 PST) — *not* local midnight.
+  If nothing changed, the problem fixes itself at the next reset.
+- **Uploads (Class A) are unaffected** — but backups still fail, because
+  restic must *read* the repo config and index before writing a byte. A blown
+  download cap therefore blocks the nightly backup, not just restores.
+- **Nothing on the box needs restarting.** Kill any hung
+  `restic`/`rclone serve restic` processes (they burn Class B transactions
+  retrying) and let the next scheduled run proceed after the reset.
+
+**Root cause to watch for: restore tests consume the download cap.** A full
+restore downloads essentially the whole repo; the default cap is far below the
+repo size. This is a permanent property of the setup — *the* way this fires is
+"gate-#3 restore test on day N, silently dead backup on day N+1."
+
+**Prevention:** in the B2 dashboard (Caps & Alerts), set the download cap to
+~25 GB/day **with an email alert**. That covers normal operation and
+single-blob restore tests (restic reads the index plus the relevant packs —
+GBs, not the repo). A full-restore drill exceeds any sane daily cap: raise the
+cap temporarily and deliberately for it, as part of the drill's runbook, then
+lower it again.
 
 ## Follow-ups (not gating launch)
 

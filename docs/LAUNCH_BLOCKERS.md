@@ -105,20 +105,21 @@ Has `setup.sh` been run start-to-finish by anyone other than the maintainer, on 
 - **What to do:** one external tester (a tech-comfortable friend) attempts the [QUICKSTART](QUICKSTART.md) on a fresh Ubuntu Server LTS VM, without help. Document where they get stuck.
 - **Bar for "done":** the friend reaches a working stack, OR every blocker they hit is fixed in setup.sh / docs.
 
-### 7. Pre-launch security pass — 🚧 run 2026-07-15; one HIGH finding open
+### 7. Pre-launch security pass — ✅ run 2026-07-15; SEC-1 remediated + re-verified 2026-07-16
 Point-in-time review of the externally reachable surface + a git-history secrets
 audit. Full results: [docs/SECURITY_PASS.md](SECURITY_PASS.md).
 - **Clean:** git history (gitleaks, 57 commits), published ports (only Caddy 443;
   Dispatcharr is localhost-only), per-service auth (every exposed vhost
   self-authenticates), Vaultwarden invite-only.
-- **SEC-1 (HIGH, open):** the WAN IP runs an **open recursive DNS resolver** on
-  port 53 — remotely abusable for DNS-amplification DDoS and IP blocklisting,
-  zero credentials needed. Fix is an OPNsense Unbound interface/ACL change (see
-  SECURITY_PASS.md). **This is the top blocker ahead of any public link.**
+- **SEC-1 (HIGH): ✅ remediated + re-verified 2026-07-16.** Was: open recursive
+  DNS resolver on the WAN IP. Fixed at three layers (Unbound WAN listener
+  removed, internal-only ACLs, offending WAN pass rule deleted — a
+  source-restricted rule defeated by upstream-NAT source rewriting; see the
+  remediation log in SECURITY_PASS.md). Off-net `dig` now times out.
 - **Dispatcharr public story:** ✅ decided 2026-07-15 — **omitted from the
   public site entirely.** The site's feature story is photos / passwords /
   media / AI; Live TV stays un-marketed (repo remains public as-is).
-- **Bar for "done":** SEC-1 remediated and re-verified from off-net.
+- **Bar for "done":** SEC-1 remediated and re-verified from off-net. ✅ Met 2026-07-16.
 
 ## Honest-disclosure items (acknowledged, not gates)
 

@@ -1,14 +1,18 @@
 # Keeping services up to date — and the AI-agent question
 
-> **Status (2026-07-15):** 🚧 step 0 + Renovate config landed. All image tags
-> are pinned except Ente (deliberately floating until the photo migration
-> completes — see the note in `services/ente/docker-compose.yml`), Jellyfin is
-> bumped to 10.11.11 (clears the four outstanding advisories, incl. the HIGH
-> ffmpeg arg injection), and `renovate.json` is in the repo root. **Remaining
-> activation step:** install the Renovate GitHub App on
-> `dustindoan/coralstack-infra` (https://github.com/apps/renovate) — hosted app
-> chosen over self-hosted for now (open question 1): it only ever opens PRs;
-> deploy stays manual-on-box, so sovereignty of the *data path* is unaffected.
+> **Status (2026-07-17):** 🚧 step 0 complete. **Every** image tag is now
+> pinned: the last floater, Ente, is digest-pinned in
+> `services/ente/docker-compose.yml` now that the photo migration is verified
+> (Ente ships only a rolling `:latest`, so a digest is the only real pin;
+> Renovate is configured to open digest-bump PRs and treats Ente as
+> stateful-review-carefully). Jellyfin `10.11.11` (clears the four advisories
+> incl. the HIGH ffmpeg arg injection) is **deployed to the box** 2026-07-17,
+> not just merged. `renovate.json` is in the repo root. **Remaining activation
+> step:** install the Renovate GitHub App on `dustindoan/coralstack-infra`
+> (https://github.com/apps/renovate) — hosted app chosen over self-hosted for
+> now (open question 1): it only ever opens PRs against the repo (not a
+> box/data-path service — see the note below); deploy stays manual-on-box, so
+> sovereignty of the *data path* is unaffected.
 
 > Original framing below. Frames how CoralStack
 > should stay current without breaking a family's photo/password infrastructure,
@@ -122,11 +126,12 @@ doesn't replace the safety rails.
 
 ## Recommended first step
 
-Two small, independent moves that need no agent:
-1. **Pin the four floating tags** (minio, socat, dispatcharr now; Ente
-   post-migration) — closes the reproducibility gap.
-2. **Add a `renovate.json`** scoped to the service compose files so update PRs
-   start flowing into the existing review process.
+Two small, independent moves that need no agent — **both done**:
+1. ✅ **Pin the four floating tags** — minio/socat/dispatcharr pinned; Ente
+   digest-pinned post-migration (2026-07-17). Reproducibility gap closed.
+2. ✅ **Add a `renovate.json`** scoped to the service compose files so update PRs
+   flow into the existing review process. (Awaiting the GitHub App install to
+   activate — see status note at top.)
 
 The AI-agent layer is then a *later* enhancement that plugs into that PR flow as
 lettabot matures — not a prerequisite, and explicitly out of scope until the

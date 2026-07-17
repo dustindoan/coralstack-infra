@@ -9,8 +9,9 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$REPO_ROOT"
 
 # ─── Pinned upstream versions ────────────────────────────────────────────────
-# Ente image tags live in services/ente/.env (ENTE_SERVER_VERSION,
-# ENTE_WEB_VERSION) — bump them there, then docker compose pull && up -d.
+# Ente images are digest-pinned directly in services/ente/docker-compose.yml
+# (Renovate opens bump PRs). All other service images are pinned in their own
+# compose files. This var is the one tag setup.sh injects itself.
 JELLYFIN_SSO_VERSION=4.0.0.4
 
 log()  { printf '\033[1;36m==>\033[0m %s\n' "$*"; }

@@ -78,7 +78,8 @@ again" makes backups non-negotiable.
 | GPU transcoding (Jellyfin QSV via iGPU passthrough) | ✅ done (2026-06-23) | [GPU_TRANSCODING.md](GPU_TRANSCODING.md) — Iris 650 passed to apps VM 101; Jellyfin has /dev/dri. Remaining: enable QSV in Jellyfin UI |
 | Admin front door (Homepage dashboard + admin-SSO) | 💭 captured, not built | [memory](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_admin_dashboard.md) — 3 layers: Homepage / Headscale reachability / forward_auth gate. Proxmox-OIDC + Dispatcharr#806 noted |
 | Backup strategy implementation | ✅ deployed + restore-tested (DBs+configs to B2 CA-East); photo upload deferred until migration settles | [BACKUPS.md](BACKUPS.md) — restic+rclone service ([services/backup](../services/backup/)), cloud-agnostic |
-| Service update strategy (pin tags → Renovate → agent) | 💭 specced (hand-off) | [APP_UPDATES.md](APP_UPDATES.md) — pin the 4 floating tags, add Renovate PRs into the existing flow, layer lettabot triage later |
+| Service update strategy (pin tags → Renovate → agent) | ✅ detection live | [APP_UPDATES.md](APP_UPDATES.md) — all tags pinned, Renovate app installed + opening bump PRs (2026-07-17); lettabot triage layered later |
+| Deploy primitive + admin-panel Deploy button (`main` → box) | 💭 specced, buildable | [DEPLOY_ARCHITECTURE.md](DEPLOY_ARCHITECTURE.md) — idempotent snapshot→apply→health-gate→rollback; three triggers (CLI/panel/agent); pull-only; closes the *merged-but-not-deployed* gap |
 | Observability (Grafana/Loki) | 💭 not specced | TBD |
 
 ---
@@ -109,6 +110,7 @@ Mostly speculative today.
 | coralstack.org edge services | 💭 vision-stage | TBD |
 | Self-hosted DNS + Handshake TLD | 💭 vision-stage | TBD |
 | Install simplicity target (5 answers / 30 min) | 💭 north star | TBD — see [memory](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_install_simplicity_target.md) |
+| Fleet release tags (hosts track `coralstack vX.Y.Z`, not `main`) | 💭 vision-stage | [DEPLOY_ARCHITECTURE.md](DEPLOY_ARCHITECTURE.md#5-the-release-concept--for-the-fleet-not-this-box) — `deploy(<tag>)` + a promote step, on the same primitive |
 | Hardware product (HA-Green analogue) | 💭 vision-stage | TBD |
 
 ---

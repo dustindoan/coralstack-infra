@@ -14,10 +14,17 @@
       "matchPackageNames": [
         "timshel/oidcwarden",
         "ghcr.io/pocket-id/pocket-id",
+        "ghcr.io/ente-io/server",
+        "ghcr.io/ente-io/web",
         "postgres"
       ],
       "labels": ["dependencies", "stateful-review-carefully"],
       "prPriority": 5
+    },
+    {
+      "description": "Ente ships only a rolling `latest` (no version tags), so it's pinned by digest in compose. Enable digest pinning/updates so Renovate PRs when latest's digest moves; it's the service holding the photos, so every bump is a deliberate, read-the-notes event.",
+      "matchPackageNames": ["ghcr.io/ente-io/server", "ghcr.io/ente-io/web"],
+      "pinDigests": true
     },
     {
       "description": "Postgres: major upgrades require a dump/restore migration, not a tag bump. Only take minor/patch within 15.x.",

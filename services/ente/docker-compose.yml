@@ -14,12 +14,15 @@
 
 services:
   ente-museum:
-    # ENTE_*_VERSION is still `latest` in the deployed .env: Ente is
-    # mid-photo-migration, and the server must not change under an active
-    # upload (see docs/APP_UPDATES.md step 0). Pin to an explicit version —
-    # and move the tag in-repo so Renovate can see it — once migration
-    # completes.
-    image: ghcr.io/ente-io/server:${ENTE_SERVER_VERSION}
+    # Pinned by digest (2026-07-17, post-migration). Ente publishes only a
+    # rolling `:latest` — no version tags — so a digest is the only way to pin.
+    # This is the exact image the 32,310-photo migration was verified against.
+    # The `:latest` tag is kept for human readability; Docker resolves by digest.
+    # Renovate watches this and opens a digest-bump PR when `latest` moves (see
+    # renovate.json — Ente is flagged stateful-review-carefully). To take a bump:
+    # merge the PR, then `git pull && docker compose pull ente-museum ente-web &&
+    # docker compose up -d` on the box.
+    image: ghcr.io/ente-io/server:latest@sha256:4367349f3dd6b95eb6f05620fe8dd17f09845b3a913bec5e273caa9f950e4f9c
     container_name: ente-museum
     restart: unless-stopped
     depends_on:
@@ -53,7 +56,8 @@ services:
   # auth (3003), and cast (3004). Caddy routes a subdomain to each port we
   # expose to members. Cast is deferred — no Caddy route for it during trial.
   ente-web:
-    image: ghcr.io/ente-io/web:${ENTE_WEB_VERSION}
+    # Pinned by digest — see the note on ente-museum's image above.
+    image: ghcr.io/ente-io/web:latest@sha256:b042a654b9f34b3888070c93cc4da0ead6cb797655d62b14186071a492b18ec5
     container_name: ente-web
     restart: unless-stopped
     environment:

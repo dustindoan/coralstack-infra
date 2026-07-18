@@ -22,13 +22,18 @@ services via public DNS → **eero hairpin NAT**.
 
 ### Known consequences of this topology (hard-won, do not re-learn)
 
-1. **eero hairpin drops UDP/443** (2026-07-17, verified by isolation probes:
-   h3 direct to OPNsense WAN = 82 ms; h3 via hairpin = blackhole). With Caddy
-   advertising `alt-svc: h3` (30-day max-age), iOS clients cached the h3
-   mapping per-app-container and hard-failed intermittently — root cause of
-   the Jellify "one track then wedge" saga (see the Jellify memory). Web
-   clients fall back gracefully; iOS does not. **Therefore h3 is disabled in
-   the Caddyfile until the topology changes.**
+1. **RETRACTED, then corrected (2026-07-17, same day):** an isolation probe
+   appeared to show the eero hairpin dropping UDP/443 (h3 direct to OPNsense
+   WAN = 82 ms; h3 "via hairpin" = blackhole), and h3 was disabled on that
+   basis. The probe was later discovered to have run while the admin's Mac
+   was on a VPN — the "hairpin" leg actually went VPN→WAN, so the result
+   says nothing about the hairpin. Meanwhile the admin's phone streamed
+   *better* with h3 enabled. h3 was re-enabled the same evening. **Lesson
+   for network debugging on this LAN: before trusting any path-isolation
+   probe, verify the probing machine's egress (VPN off, note the
+   `remote_ip` the server sees).** The clean verification protocol for h3
+   remains the checklist at the bottom of this doc; as of the re-enable,
+   hairpin-UDP behavior is *unknown*, not known-bad.
 2. **Source-based trust cannot cross the eero NAT** (SEC-1, 2026-07-16): the
    eero can launder internet traffic into the "trusted" 192.168.4.0/24 range,
    so an inner-firewall rule like "allow DNS from family LAN" is effectively
@@ -94,17 +99,25 @@ every service already authenticates because it is internet-exposed; see
 SECURITY_PASS auth map) and the OPNsense lab layer.
 
 **Decision 2026-07-17: fork B is the intended direction but deferred** — it
-is more impactful than a bugfix window. Until then h3 stays off.
+is more impactful than a bugfix window.
 
-## h3 re-enable bar
+## h3 verification bar
 
-Re-enable (`caddy/Caddyfile`, remove the `servers { protocols h1 h2 }`
-block) only when **all** of:
+*(History: h3 was disabled 2026-07-17 on VPN-tainted evidence and re-enabled
+the same evening — see the retraction above. It is currently ON. This
+checklist is the bar for any future decision in either direction.)*
 
-1. Topology no longer routes LAN clients through the eero hairpin (fork A or
-   B complete, or split-horizon DNS safely deployed).
-2. `curl --http3-only` succeeds against the service hostname from the LAN.
-3. Same test passes from a WAN vantage (cellular hotspot) — verifies the
-   router's UDP forward for remote clients.
-4. A freshly-installed iOS client (delete app first — Alt-Svc cache lives in
+Before *disabling* h3 again (or claiming the hairpin drops UDP), or before
+declaring h3 fully healthy, verify with clean instruments — **VPN off on the
+probing machine, confirm the `remote_ip` Caddy sees matches the expected
+path** — all of:
+
+1. `curl --http3-only` against the service hostname from the LAN (true
+   hairpin path).
+2. Same test from a WAN vantage (cellular hotspot) — verifies the router's
+   UDP forward for remote clients.
+3. A freshly-installed iOS client (delete app first — Alt-Svc cache lives in
    the app container for 30 days) survives multi-track playback.
+4. If any leg fails, prefer fixing the path (or the Phase-2 topology forks
+   above, where h3 works by construction) over silently advertising a
+   transport that blackholes for some clients.

@@ -54,7 +54,7 @@ and (b) telling members how to acquire new music going forward.
   the collection"), options, and the buy-&-own vs auto-grab decision.
 - **Bar for "done":** a member can rebuild their listening setup end-to-end with documented steps.
 
-### 3. Backups (basic, present) — 🚧 restore test RUN 2026-07-15; caught critical gap, remediation in flight
+### 3. Backups (basic, present) — ✅ done 2026-07-17; photo restore proven byte-identical from B2
 The pitch is "trust this with your family's photos and passwords." Without offsite
 backups, one disk failure becomes a launch-killing story.
 - **Strategy exists** in [memory: backup strategy](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_backup_strategy.md) (3-2-1, RAID ≠ backup, etc.).
@@ -65,15 +65,18 @@ backups, one disk failure becomes a launch-killing story.
   the destination is a pure env knob (local path, or `rclone:` → B2/Wasabi/R2/SFTP/
   a co-op member's box) — no vendor lock-in, opaque encrypted blobs only. Runbook:
   [docs/BACKUPS.md](BACKUPS.md).
-- **Bar for "done":** one successful restore test from the repo. Procedure is in
-  [BACKUPS.md → Restore test](BACKUPS.md#restore-test-the-gate).
-- **2026-07-15 restore test:** dumps restored and validated cleanly, **but the
-  test caught a critical coverage gap** — the deployed `BACKUP_EXCLUDES` excluded
-  all of `/storage`, so the 646 GB of Ente photo blobs had never been in any
-  snapshot. See [BACKUPS.md → Restore-test log](BACKUPS.md#restore-test-log).
-  Remaining to close the gate: deploy the corrected excludes + `/config` secrets
-  mount, run the initial full backup (~646 GB to B2), then re-verify a blob
-  restores.
+- **Bar for "done":** one successful restore test from the repo. ✅ **Met
+  2026-07-17.** Procedure is in [BACKUPS.md → Restore test](BACKUPS.md#restore-test-the-gate).
+- **2026-07-15 restore test** caught a critical coverage gap (the deployed
+  `BACKUP_EXCLUDES` excluded all of `/storage`, so Ente photo blobs had never
+  been in any snapshot) — now closed.
+- **2026-07-17: gate met.** Corrected excludes + split-stream retention deployed;
+  the [Ente purge-queue drain](ENTE_STORAGE.md) cut the seed from ~646 GB to
+  ~242 GB, then the initial seed uploaded both streams to B2 (`data` 2.581 GiB +
+  `storage` 242.800 GiB, `restic check` clean). **Blob restore proven:** a real
+  ~1.7 GB multipart photo restored byte-identical from B2 (sha256 match to the
+  live original). The "restore-tested backups" site claim is now literally true.
+  See [BACKUPS.md → Restore-test log](BACKUPS.md#restore-test-log).
 
 ### 4. Member onboarding doc — 🚧 doc written 2026-07-15; walkthrough test pending
 [docs/ONBOARDING.md](ONBOARDING.md) is admin-facing (OIDC client wiring). Members

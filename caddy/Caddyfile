@@ -1,15 +1,11 @@
 {
 	email {$ACME_EMAIL}
 
-	# HTTP/3 disabled: iOS clients (Jellify/NSURLSession) cache the h3
-	# Alt-Svc mapping for 30 days inside the app container and then hard-fail
-	# on our flaky UDP/443 path (eero double-NAT hairpin). Symptoms were
-	# intermittent PlaybackInfo failures and instant stream aborts; deleting
-	# the app "fixed" it once because that clears the cached mapping.
-	# Re-enable only after UDP/443 is verified end-to-end from LAN and WAN.
-	servers {
-		protocols h1 h2
-	}
+	# HTTP/3 ENABLED (2026-07-17 reversal): the "hairpin drops UDP/443" probe
+	# that justified disabling h3 was later found to have run through a VPN
+	# on the admin's Mac — the evidence was tainted, and the admin's phone
+	# streamed *better* with h3 on. See docs/NETWORK_TOPOLOGY.md for the
+	# clean-instrument verification protocol before touching this again.
 }
 
 # Shared TLS config: Let's Encrypt via Cloudflare DNS-01. Using Cloudflare's

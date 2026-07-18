@@ -64,7 +64,9 @@ identified, verified from off-net:
    admins: behind an upstream NAT, source-based trust in the inner firewall is
    unsound — the outer NAT can launder any source into your trusted range.**
    The rule was not part of any documented design (nothing in the runbooks or
-   the deployed stack depends on it) and is deleted.
+   the deployed stack depends on it) and is disabled (verified nothing on the
+   household LAN relied on it: family devices resolve via the eero/ISP path, and
+   the media hairpin never touches port 53).
 4. **Upstream checked:** the eero forwards only `443` to the OPNsense WAN IP —
    no 53 forward, no DMZ.
 5. **Off-net verification:** `dig @38.175.158.9 google.com` from an external

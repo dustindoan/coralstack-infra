@@ -122,11 +122,12 @@
   /* Cards / service tiles */
   .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(17.5rem, 1fr)); gap: 1.25rem; margin-top: 2.5rem; }
   .card {
+    display: block; color: inherit;
     background: var(--bg-raised); border: 1px solid var(--line); border-radius: 20px;
     padding: 1.75rem; box-shadow: var(--shadow);
     transition: transform .2s ease, box-shadow .2s ease;
   }
-  .card:hover { transform: translateY(-4px); box-shadow: var(--shadow-lift); }
+  .card:hover { transform: translateY(-4px); box-shadow: var(--shadow-lift); text-decoration: none; }
   .card .ico {
     width: 3rem; height: 3rem; border-radius: 0.85rem; margin-bottom: 1.1rem;
     display: flex; align-items: center; justify-content: center; font-size: 1.55rem;
@@ -134,7 +135,10 @@
   }
   .card h3 { font-size: 1.22rem; margin: 0 0 0.55rem; letter-spacing: -0.015em; }
   .card p { margin: 0 0 0.7rem; font-size: 0.98rem; color: var(--ink-soft); }
-  .card .by { font-size: 0.83rem; color: var(--ink-soft); margin: 0; font-weight: 550; }
+  .card .by { font-size: 0.83rem; color: var(--ink-soft); margin: 0; font-weight: 550; transition: color .2s ease; }
+  .card .by::after { content: " ↗"; opacity: 0; transition: opacity .2s ease; }
+  .card:hover .by { color: var(--accent); }
+  .card:hover .by::after { opacity: 1; }
 
   /* Table */
   .table-scroll { overflow-x: auto; margin-top: 2.5rem; border-radius: 18px; box-shadow: var(--shadow); }
@@ -250,48 +254,48 @@
     <p class="eyebrow">What you get</p>
     <h2>Everything you rent today — owned.</h2>
     <div class="cards">
-      <div class="card">
+      <a class="card" href="https://ente.io" target="_blank" rel="noopener">
         <div class="ico">📷</div>
         <h3>Photos</h3>
         <p>Your camera roll backs up automatically, end-to-end encrypted. Not even the server can
         see your pictures. Albums, sharing, search — on all your devices.</p>
         <p class="by">powered by Ente</p>
-      </div>
-      <div class="card">
+      </a>
+      <a class="card" href="https://github.com/dani-garcia/vaultwarden" target="_blank" rel="noopener">
         <div class="ico">🔑</div>
         <h3>Passwords</h3>
         <p>A full password manager with apps for every phone and browser, autofill included. Your
         vault is encrypted with a passphrase only you know.</p>
         <p class="by">powered by Vaultwarden, Bitwarden-compatible</p>
-      </div>
-      <div class="card">
+      </a>
+      <a class="card" href="https://jellyfin.org" target="_blank" rel="noopener">
         <div class="ico">🎬</div>
         <h3>Movies, TV &amp; music</h3>
         <p>Your community's media library, streaming to your phone, laptop, and TV. Your music
         collection lives here too — owned, not rented.</p>
         <p class="by">powered by Jellyfin</p>
-      </div>
-      <div class="card">
+      </a>
+      <a class="card" href="https://openwebui.com" target="_blank" rel="noopener">
         <div class="ico">🤖</div>
         <h3>Private AI chat</h3>
         <p>A capable AI assistant running on community hardware with open models. Conversations
         never leave the building.</p>
         <p class="by">powered by Open WebUI</p>
-      </div>
-      <div class="card">
+      </a>
+      <a class="card" href="https://pocket-id.org" target="_blank" rel="noopener">
         <div class="ico">👆</div>
         <h3>One login</h3>
         <p>A passkey: your fingerprint or face, no passwords to remember, nothing to phish. Every
         service above accepts it.</p>
         <p class="by">powered by Pocket ID</p>
-      </div>
-      <div class="card">
+      </a>
+      <a class="card" href="https://github.com/louislam/uptime-kuma" target="_blank" rel="noopener">
         <div class="ico">🟢</div>
         <h3>A straight answer when something breaks</h3>
         <p>A public status page shows exactly what's up and what's down. No "we're aware of an
         issue."</p>
         <p class="by">powered by Uptime Kuma</p>
-      </div>
+      </a>
     </div>
   </div>
 </section>

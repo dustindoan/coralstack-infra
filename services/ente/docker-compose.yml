@@ -45,7 +45,7 @@ services:
   # bucket has its own real endpoint); socat makes that resolve to MinIO. Don't
   # drop this — without it museum's S3 ops get connection-refused.
   ente-socat:
-    image: alpine/socat:1.8.0.3
+    image: alpine/socat:1.8.1.3
     container_name: ente-socat
     restart: unless-stopped
     network_mode: service:ente-museum

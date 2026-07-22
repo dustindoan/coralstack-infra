@@ -203,15 +203,15 @@ email. **dustindoan@proton.me** *(decided 2026-07-15: maintainer proton address)
   site staying up is independent of the stack being down (which is the moment
   people check it).
 - **Live-claim accuracy** (was the pre-publish checklist; the site is now live, so
-  these are public promises, not gates): confirm SEC-1 is remediated and the
-  initial 646 GB photo backup is complete — until the backup is done, the
-  "restore-tested backups" claim on the live page overstates (see claims audit
-  below). Contact address ✅ decided: dustindoan@proton.me. If any item is still
-  open, the honest move is to soften the live copy, not wait to publish — it's
-  already up.
-- **Claims audit:** "restore-tested" = 2026-07-15 DB/config restore test;
-  re-verify a photo blob restore after the initial full backup, then this is
-  fully true. "We document how" (music acquisition) — the member-facing page for
+  these are public promises, not gates): initial 646 GB photo backup ✅ complete
+  (2026-07-22) — the "restore-tested backups" claim no longer overstates on the
+  backup-existing front. SEC-1: confirm remediated. Contact address ✅ decided:
+  dustindoan@proton.me. If any item is still open, the honest move is to soften
+  the live copy, not wait to publish — it's already up.
+- **Claims audit:** "restore-tested" = 2026-07-15 DB/config restore test; with the
+  646 GB full backup now complete (2026-07-22), the remaining step to make the
+  claim fully true is a one-time photo-blob restore verification — confirm that's
+  been run. "We document how" (music acquisition) — the member-facing page for
   that doesn't exist yet (gate #2); either finish it or soften to "guidance
   coming."
 - **Blog-post seed:** the 2026-06-11 message that shaped the "Something worth

@@ -17,8 +17,8 @@ concurrency:
 
 jobs:
   deploy:
-    # Inert until GitHub Pages is enabled in repo settings (Source: GitHub Actions).
-    # See site/README.md for the publish procedure and pre-publish checklist.
+    # Live: Pages is enabled (Source: GitHub Actions), custom domain coralstack.org,
+    # HTTPS enforced. A site/** push to main redeploys. See site/README.md.
     runs-on: ubuntu-latest
     environment:
       name: github-pages

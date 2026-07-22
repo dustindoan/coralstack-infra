@@ -203,17 +203,19 @@ email. **dustindoan@proton.me** *(decided 2026-07-15: maintainer proton address)
   site staying up is independent of the stack being down (which is the moment
   people check it).
 - **Live-claim accuracy** (was the pre-publish checklist; the site is now live, so
-  these are public promises, not gates): initial 646 GB photo backup ✅ complete
-  (2026-07-22) — the "restore-tested backups" claim no longer overstates on the
-  backup-existing front. SEC-1: confirm remediated. Contact address ✅ decided:
+  these are public promises, not gates): initial photo backup ✅ done and photo
+  restore ✅ proven (2026-07-17 — the seed dropped from ~646 GB to ~242 GB after
+  the Ente purge-queue drain; see [LAUNCH_BLOCKERS.md](LAUNCH_BLOCKERS.md) + the
+  [BACKUPS.md restore-test log](BACKUPS.md#restore-test-log)). SEC-1: confirm
+  remediated (the one item to re-check). Contact address ✅ decided:
   dustindoan@proton.me. If any item is still open, the honest move is to soften
   the live copy, not wait to publish — it's already up.
-- **Claims audit:** "restore-tested" = 2026-07-15 DB/config restore test; with the
-  646 GB full backup now complete (2026-07-22), the remaining step to make the
-  claim fully true is a one-time photo-blob restore verification — confirm that's
-  been run. "We document how" (music acquisition) — the member-facing page for
-  that doesn't exist yet (gate #2); either finish it or soften to "guidance
-  coming."
+- **Claims audit:** "restore-tested backups" ✅ **literally true** — 2026-07-15
+  DB/config restore test, then 2026-07-17 photo-blob restore proven byte-identical
+  (recursive sha256 on a ~1.7 GB multipart photo + an inlined object) from B2;
+  `restic check` clean. Full log in [BACKUPS.md](BACKUPS.md#restore-test-log). "We
+  document how" (music acquisition) — the member-facing page for that doesn't
+  exist yet (gate #2); either finish it or soften to "guidance coming."
 - **Blog-post seed:** the 2026-06-11 message that shaped the "Something worth
   owning" section (Photos API deprecation → cloud concentration → AI switching
   costs → ownership vs. renting, à la Gary Stevenson on wealth inequality) is a

@@ -6,28 +6,29 @@ source-of-truth and its rationale live in [docs/SITE_COPY.md](../docs/SITE_COPY.
 
 ## Deploy model
 
-`.github/workflows/pages.yml` deploys `site/` to GitHub Pages on every push to
-`main` that touches `site/**`. The workflow is **inert until Pages is enabled**
-in the repo settings — that switch is the deliberate publish gate.
+**The site is live at <https://coralstack.org/>.** Pages is enabled
+(Source: GitHub Actions), the custom domain is verified, and HTTPS is enforced.
+`.github/workflows/pages.yml` redeploys `site/` on every push to `main` that
+touches `site/**` — so merging a `site/**` change *is* publishing it. There is no
+separate publish step and no gate to clear anymore; the initial-publish checklist
+that used to live here has been satisfied.
 
-## Publishing (one-time, admin)
+## Initial setup (done — kept for rebuild reference)
 
-Do not publish before the pre-publish checklist at the bottom of
-[SITE_COPY.md](../docs/SITE_COPY.md) is green (SEC-1 remediated, initial photo
-backup completed).
+Recorded in case Pages ever has to be re-enabled from scratch (repo transfer,
+accidental disable). Not a checklist to run for normal edits.
 
 1. Repo **Settings → Pages → Source: GitHub Actions**.
-2. Same page → **Custom domain: `coralstack.org`** (GitHub creates the domain
-   check; keep "Enforce HTTPS" on once available).
-3. At the registrar, point the apex at GitHub Pages:
+2. Same page → **Custom domain: `coralstack.org`** (Enforce HTTPS on).
+3. At the registrar, apex points at GitHub Pages:
    - `A` records → `185.199.108.153`, `185.199.109.153`, `185.199.110.153`, `185.199.111.153`
    - optionally `AAAA` → `2606:50c0:8000::153`, `…8001::153`, `…8002::153`, `…8003::153`
    - `www` `CNAME` → `dustindoan.github.io` (Pages redirects it to the apex)
-4. Re-run the workflow (Actions → "Deploy site to GitHub Pages" →
-   `workflow_dispatch`) or push any `site/**` change to `main`.
+4. A `site/**` push to `main` (or Actions → "Deploy site to GitHub Pages" →
+   `workflow_dispatch`) deploys.
 
 ## Editing
 
 Edit `index.html`, open it locally in a browser to check, merge to `main` —
-the workflow redeploys. Keep it a single file; if it ever needs more than that,
-revisit whether the addition belongs on the landing page at all.
+the workflow redeploys to the live site. Keep it a single file; if it ever needs
+more than that, revisit whether the addition belongs on the landing page at all.

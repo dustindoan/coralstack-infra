@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- DRAFT — staged outside site/, not deployed. To publish: move to site/blog/,
+     set the real date below, and link it from index.html + the footer. -->
+<title>Something worth owning — CoralStack</title>
+<meta name="description" content="The infrastructure that runs modern life keeps folding into fewer hands. The tools to opt out finally got good. CoralStack is a small computer, in a home, that does the jobs you'd otherwise rent.">
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%20100%20100%22%3E%3Ctext%20y=%22.9em%22%20font-size=%2290%22%3E%F0%9F%AA%B8%3C/text%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #fbf8f5;
+    --bg-tint: #f4ede6;
+    --bg-raised: #ffffff;
+    --ink: #201d1b;
+    --ink-soft: #6c645d;
+    --accent: #d0492f;
+    --accent-ink: #ffffff;
+    --accent-wash: #fbeae4;
+    --line: #e8dfd6;
+    --shadow: 0 1px 2px rgba(40,20,10,.04), 0 12px 32px -12px rgba(40,20,10,.14);
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121317;
+      --bg-tint: #191b20;
+      --bg-raised: #1d2025;
+      --ink: #ece8e2;
+      --ink-soft: #a1a1a9;
+      --accent: #ff7a60;
+      --accent-ink: #1a0f0c;
+      --accent-wash: #2a1a15;
+      --line: #2e323a;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 16px 40px -16px rgba(0,0,0,.6);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 17px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  h1, h2, h3 { letter-spacing: -0.022em; line-height: 1.12; font-weight: 680; margin: 0; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  strong { font-weight: 650; }
+  :focus-visible { outline: 2.5px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+
+  .wrap { max-width: 40rem; margin: 0 auto; padding: 0 1.5rem; }
+  .eyebrow { font-size: 0.82rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); font-weight: 650; margin: 0 0 1rem; }
+
+  /* Sticky nav — matches index.html */
+  .nav {
+    position: sticky; top: 0; z-index: 50;
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
+    -webkit-backdrop-filter: saturate(180%) blur(14px);
+    backdrop-filter: saturate(180%) blur(14px);
+    border-bottom: 1px solid var(--line);
+  }
+  .nav-inner { max-width: 70rem; margin: 0 auto; padding: 0.7rem 1.5rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+  .brand { font-weight: 650; letter-spacing: -0.02em; color: var(--ink); font-size: 1.05rem; }
+  .brand a { color: inherit; }
+  .brand a:hover { text-decoration: none; }
+  .nav-links { display: flex; gap: 1.6rem; align-items: center; }
+  .nav-links a { color: var(--ink-soft); font-size: 0.94rem; font-weight: 550; }
+  .nav-links a:hover { color: var(--ink); text-decoration: none; }
+  .nav-cta { color: var(--accent) !important; }
+  @media (max-width: 640px) { .nav-links a:not(.nav-cta) { display: none; } }
+
+  /* Article */
+  article { padding: 3.5rem 0 4.5rem; }
+  .post-head { margin-bottom: 2.5rem; }
+  .post-meta { font-size: 0.9rem; color: var(--ink-soft); margin: 0 0 1rem; }
+  .post-meta a { color: var(--ink-soft); }
+  .post-head h1 { font-size: clamp(2.1rem, 5.5vw, 3.2rem); font-weight: 700; letter-spacing: -0.03em; margin: 0 0 1rem; }
+  .post-head .standfirst { font-size: 1.25rem; color: var(--ink-soft); font-weight: 500; letter-spacing: -0.01em; margin: 0; }
+
+  .post p { margin: 0 0 1.3rem; }
+  .post h2 { font-size: clamp(1.4rem, 3.4vw, 1.8rem); margin: 2.8rem 0 1.1rem; }
+  .post a { text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent); text-underline-offset: 2px; }
+  .post a:hover { text-decoration-color: var(--accent); }
+  .post ul.bundle-list { list-style: none; padding: 0; margin: 0 0 1.3rem; display: grid; gap: 0.8rem; }
+  .post ul.bundle-list li { padding-left: 1.5rem; position: relative; }
+  .post ul.bundle-list li::before { content: "—"; position: absolute; left: 0; color: var(--accent); font-weight: 700; }
+  .post .kicker { font-weight: 650; }
+  .post hr { border: none; border-top: 1px solid var(--line); margin: 2.6rem 0; }
+  .post .closer { font-size: 1.15rem; font-weight: 500; letter-spacing: -0.01em; }
+
+  footer { background: var(--bg-tint); padding: 3rem 0 3.5rem; font-size: 0.92rem; color: var(--ink-soft); margin-top: 2rem; }
+  footer nav { display: flex; flex-wrap: wrap; gap: 1.5rem; margin-bottom: 1rem; }
+  footer a { color: var(--ink-soft); font-weight: 550; }
+  footer a:hover { color: var(--ink); }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    * { transition: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <span class="brand"><a href="/">🪸 CoralStack</a></span>
+    <div class="nav-links">
+      <a href="/#what-you-get">What you get</a>
+      <a href="/#how">How it works</a>
+      <a href="/#faq">FAQ</a>
+      <a class="nav-cta" href="mailto:dustindoan@proton.me?subject=CoralStack">Contact</a>
+    </div>
+  </div>
+</nav>
+
+<article>
+  <div class="wrap">
+
+    <header class="post-head">
+      <p class="post-meta">Draft · <a href="/">CoralStack</a></p>
+      <p class="eyebrow">Why now</p>
+      <h1>Something worth owning</h1>
+      <p class="standfirst">The infrastructure that runs modern life keeps folding into fewer
+      hands. The tools to opt out finally got good. So I built the room.</p>
+    </header>
+
+    <div class="post">
+      <p>A little while ago I went looking for a way to move my photos out of one company's cloud
+      and into software I actually controlled. I found the door had quietly closed. Google had
+      retired its Photos Library API — the interface that let other software read your own photo
+      library — in 2025. The pictures were still mine, technically. Getting them somewhere I chose
+      was now someone else's decision.</p>
+
+      <p>That's a small thing. But small things rhyme.</p>
+
+      <h2>The pattern</h2>
+
+      <p>Once you notice it, you see the same shape everywhere. The infrastructure that runs modern
+      life keeps folding into fewer and fewer hands. In Canada, three companies — Amazon, Google,
+      and Microsoft — now hold
+      <a href="https://www.cbc.ca/news/business/cloud-computing-competition-9.7219996">85% of the
+      cloud market</a>; a report this year called it "broken." When one of them hiccups, a chunk of
+      the internet goes dark with it.</p>
+
+      <p>And now the same play is running with AI. Your photos, your passwords, and — more and more
+      — your actual thinking are moving inside someone else's model, in someone else's datacenter.
+      Each thing you add raises the cost of ever leaving. That's not an accident. That's the
+      business model.</p>
+
+      <p>Here's the part I keep coming back to. The economist Gary Stevenson makes a blunt point
+      about money:
+      <a href="https://www.youtube.com/watch?v=iD2sPL7k98c">the people who <em>own</em> things pull
+      away from the people who <em>rent</em> them</a>, and the distance compounds — every year,
+      quietly, in the owners' favour. Digital life is running that exact script. A few platforms
+      own the infrastructure. Everyone else rents access to their own memories. And the gap widens
+      on its own.</p>
+
+      <p>I don't think the answer to that is a better subscription. A nicer landlord is still a
+      landlord.</p>
+
+      <h2>The good news, which is real</h2>
+
+      <p>Here's what changed, and why I'm writing this now instead of just complaining.</p>
+
+      <p>The tools to opt out finally got good. Open-source software caught up to the paid stuff —
+      in some cases passed it. End-to-end encryption became something you can turn on by default
+      instead of a research project. And the hardware to run all of it now costs less than a year
+      of the subscriptions it replaces, and fits on a shelf. What used to take a datacenter fits in
+      a room.</p>
+
+      <p>So I built the room. <strong>CoralStack</strong> is a small computer, running in a home,
+      that does the jobs you'd otherwise rent:</p>
+
+      <ul class="bundle-list">
+        <li><span class="kicker">Photos</span> — your camera roll, backed up automatically and
+        end-to-end encrypted. Not even the server can see them.</li>
+        <li><span class="kicker">Passwords</span> — a full password manager, apps on every device,
+        autofill included.</li>
+        <li><span class="kicker">Movies, TV, and music</span> — your community's library, streaming
+        to every screen. Your music collection lives here too — owned, not rented.</li>
+        <li><span class="kicker">A private AI assistant</span> — capable, running on open models,
+        on hardware in the building. The conversation never leaves.</li>
+        <li><span class="kicker">One login</span> for all of it — your face or your fingerprint,
+        nothing to phish.</li>
+      </ul>
+
+      <p>It's not a company. There's no billing, no accounts, no upsell. The whole thing is open
+      source (AGPL-3.0) and the entire setup — infrastructure, runbooks, backup and recovery —
+      lives in <a href="https://github.com/dustindoan/coralstack-infra">one public repo</a> you can
+      read before you trust it.</p>
+
+      <p>I'll be honest about where it is: <strong>early.</strong> One community runs it today —
+      mine, in Campbell River. Joining is still high-touch; a real person sets you up. I'd rather
+      tell you that now than have you find out later. The
+      <a href="https://github.com/dustindoan/coralstack-infra/blob/main/docs/ROADMAP.md">roadmap</a>
+      and the open blockers are public for the same reason.</p>
+
+      <h2>The part that actually matters</h2>
+
+      <p>Self-hosting is not new. People have been running their own servers for decades. But be
+      honest about who it reached: the technical. If you're the kind of person who reads to the end
+      of a post like this, you can probably solve photos and passwords and AI for yourself
+      already.</p>
+
+      <p>Most people can't. And that's the whole gap. For twenty years this movement freed the
+      technophiles and left everyone else on the rented internet — the people who don't want to
+      learn Linux and shouldn't have to. Your parents. Your neighbours. The co-op down the road.</p>
+
+      <p>They don't need to become technical. They need to <em>know someone who is.</em></p>
+
+      <p>That's the shape CoralStack is built for. One person's weekend of setup covers a whole
+      household, a friend group, a co-op — not just themselves. If you're that person — the one
+      everyone already texts when the wifi breaks — you're the missing piece. Not a product. A
+      neighbour who happens to run the server.</p>
+
+      <h2>If any of this lands</h2>
+
+      <p>Whether you'd want to join a community like this or <strong>host one for the people around
+      you</strong>, the door is open — this time on purpose. The code is on
+      <a href="https://github.com/dustindoan/coralstack-infra">GitHub</a>. Everything else starts
+      with an email: <a href="mailto:dustindoan@proton.me?subject=CoralStack">dustindoan@proton.me</a>.</p>
+
+      <hr>
+
+      <p class="closer">Your photos, on hardware your community owns. It's a small step. But it's
+      the actual alternative — not a different landlord.</p>
+    </div>
+
+  </div>
+</article>
+
+<footer>
+  <div class="wrap">
+    <nav>
+      <a href="/">Home</a>
+      <a href="https://github.com/dustindoan/coralstack-infra">GitHub</a>
+      <a href="https://github.com/dustindoan/coralstack-infra/blob/main/docs/ROADMAP.md">Roadmap</a>
+      <a href="https://github.com/dustindoan/coralstack-infra/blob/main/LICENSE">License (AGPL-3.0)</a>
+    </nav>
+    <p>🪸 CoralStack — open-source, self-hosted, community-owned.</p>
+  </div>
+</footer>
+
+</body>
+</html>

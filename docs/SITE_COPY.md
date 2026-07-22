@@ -21,7 +21,7 @@ won or lost here.]*
 
 # Your photos, on hardware your community owns.
 
-That's the actual alternative.
+The cloud, brought home.
 
 CoralStack is an open-source template for replacing iCloud Photos, your password
 manager, your music library, and your AI chat — with services running on a small
@@ -30,24 +30,29 @@ groups, and co-ops.
 
 *[Buttons:]* **What you get** · **Interested? Talk to us** · **GitHub**
 
-## The exits are closing
+## Something worth owning
 
-*[Short section, 3 paragraphs. This is the "why now," not a feature list.]*
+*[Short section, 3 paragraphs. This is the "why now," told as a future to build
+toward, not a threat to flee.]*
 
-Privacy is the reason everyone states. It's real. But something quieter is also
-happening: the doors out are being locked. Google deprecated the Photos Library
-API in 2025 — the interface that let other software read your own photo library.
-Cloud infrastructure keeps consolidating into a handful of providers
-*[link: CBC, "Cloud computing competition"]*, and the same pattern is repeating
-with AI — once your photos, passwords, and daily reasoning live inside someone
-else's model and someone else's datacenter, the switching cost becomes
-everything you do.
+Imagine your photos, your passwords, and your everyday AI living on a small
+computer you can point to — in a home, in your community, on hardware that
+belongs to people you know. Not rented. Not mined. Just yours.
 
-The fix isn't a better subscription. It's boring, durable ownership: open-source
-software, end-to-end encryption, and hardware that belongs to your community.
+That's more possible now than it's been in years. The tools got good:
+open-source software, end-to-end encryption, and hardware cheap enough to sit on
+a shelf. What used to take a data center now fits in a room.
 
-Your photos, on your own hardware. A small step — but it's the actual
-alternative, not a different landlord.
+It's also more worth doing. As photos, passwords, and daily reasoning move deeper
+into a handful of platforms — Google retired its Photos Library API in 2025,
+cloud infrastructure keeps consolidating (three companies now hold
+[85% of Canada's market](https://www.cbc.ca/news/business/cloud-computing-competition-9.7219996)),
+AI is following the same path — the gap between the people who **own** the
+infrastructure and the people who merely **rent** it only widens.
+It's the same story [Gary Stevenson](https://www.youtube.com/watch?v=iD2sPL7k98c)
+tells about wealth: ownership compounds, and renting quietly costs you more every
+year. CoralStack is a small move to the ownership side of that line — boring,
+durable, and genuinely yours. Not a different landlord.
 
 ## What you get
 
@@ -121,8 +126,15 @@ maintainer. If that excites rather than worries you, you're the audience.
 
 *[Secondary audience section — the host-admin. Compact.]*
 
-Everything the maintainer's community runs is in one public repo: infrastructure
-as code, setup script, runbooks, backup and recovery procedures, onboarding
+Self-hosting already works — for the technical. You can probably solve photos,
+passwords, and AI for yourself; most people can't, and that's the whole gap: for
+two decades this movement has freed the technophiles and left everyone else on the
+rented internet. Your parents, your neighbours, the co-op down the road don't need
+to learn Linux — they need to know someone who has. That's you.
+
+CoralStack is built so one person's weekend covers a whole household, not just
+themselves. Everything the maintainer's community runs is in one public repo:
+infrastructure as code, setup script, runbooks, backup and recovery, onboarding
 guides for you and your members.
 
 You'd need: a dedicated mini-PC (never your daily-driver machine), Ubuntu Server,
@@ -130,8 +142,9 @@ a domain, a weekend to set up, and the temperament to be your community's
 sysadmin. AGPL-3.0 — free, forever, copyleft.
 
 **Talk to us before you deploy.** Not because you must — because the install has
-so far been run by one person, and you'd be among the first to change that. We
-want to hear where it breaks.
+so far been run by one person, and you'd be among the first to change that. Be
+the person who hosts for the people who can't host for themselves. We want to
+hear where it breaks.
 
 *[Buttons:]* **Read the quickstart** · **Contact the maintainer**
 
@@ -196,6 +209,7 @@ email. **dustindoan@proton.me** *(decided 2026-07-15: maintainer proton address)
   fully true. "We document how" (music acquisition) — the member-facing page for
   that doesn't exist yet (gate #2); either finish it or soften to "guidance
   coming."
-- **Blog-post seed:** the 2026-06-11 message that shaped the "exits are closing"
-  section (Photos API deprecation → cloud concentration → AI switching costs →
-  sovereignty) is a launch post waiting to be written. Park it for launch week.
+- **Blog-post seed:** the 2026-06-11 message that shaped the "Something worth
+  owning" section (Photos API deprecation → cloud concentration → AI switching
+  costs → ownership vs. renting, à la Gary Stevenson on wealth inequality) is a
+  launch post waiting to be written. Park it for launch week.

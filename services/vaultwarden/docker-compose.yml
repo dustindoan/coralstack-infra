@@ -5,7 +5,7 @@ services:
     # broken (see vaultwarden#6316): new SSO users bounce back to the login
     # form instead of being prompted to set a master password. OIDCWarden
     # fixes that. Drop-in compatible with mainline Vaultwarden data dirs.
-    image: timshel/oidcwarden:v2026.3.1-3-alpine
+    image: timshel/oidcwarden:v2026.6.4-1-alpine
     container_name: vaultwarden
     restart: unless-stopped
     env_file:

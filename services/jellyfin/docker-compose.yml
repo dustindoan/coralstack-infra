@@ -26,10 +26,11 @@ services:
       # The music-ingest container (services/music) owns writes to the music
       # library via beets; Jellyfin reads it read-only
       - ${STORAGE_PATH}/music:/media/music:ro
-      - ${STORAGE_PATH}/movies:/media/movies:ro
-      # shows/ moved under ${STORAGE_PATH}/media/ so Sonarr can mount that one
-      # directory and get working hardlinks between the library and the download
-      # landing area — see services/sonarr. The CONTAINER path is unchanged, so
-      # Jellyfin's library configuration needs no edit; only the host side moved.
-      # movies/ stays at the storage root until something actually manages it.
+      # shows/ and movies/ live under ${STORAGE_PATH}/media/ so the *arr stack
+      # (services/arr) can mount that one directory and get working hardlinks
+      # between the libraries and the download landing area. The CONTAINER
+      # paths are unchanged, so Jellyfin's library configuration needs no edit;
+      # only the host side moved. (movies/ joined when Radarr landed — the
+      # "until something actually manages them" condition.)
+      - ${STORAGE_PATH}/media/movies:/media/movies:ro
       - ${STORAGE_PATH}/media/shows:/media/shows:ro

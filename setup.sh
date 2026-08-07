@@ -111,7 +111,11 @@ mkdir -p \
 	"$DATA_PATH/jellyfin/config" "$DATA_PATH/jellyfin/cache" \
 	"$DATA_PATH/dispatcharr" \
 	"$DATA_PATH/sonarr" \
+	"$DATA_PATH/radarr" \
+	"$DATA_PATH/prowlarr" \
 	"$DATA_PATH/qbittorrent" \
+	"$DATA_PATH/portainer" \
+	"$DATA_PATH/homarr" \
 	"$DATA_PATH/ente/postgres" "$DATA_PATH/ente/museum-data" \
 	"$DATA_PATH/open-webui" \
 	"$DATA_PATH/uptime-kuma" \
@@ -123,11 +127,11 @@ mkdir -p \
 # the compose's ${STORAGE_PATH:?...} guard will fail fast with a clear error.
 if [[ -d "$STORAGE_PATH" ]]; then
 	mkdir -p "$STORAGE_PATH/ente-minio"
-	# The *arr-managed root. shows/ is the library Jellyfin mounts read-only;
-	# downloads/ is the landing area a download client writes into. Both live
-	# under media/ so Sonarr can mount that single directory and hardlink
-	# between them (see services/sonarr).
-	mkdir -p "$STORAGE_PATH/media/shows" "$STORAGE_PATH/media/downloads"
+	# The *arr-managed root. shows/ and movies/ are the libraries Jellyfin
+	# mounts read-only; downloads/ is the landing area the download client
+	# writes into. All live under media/ so the *arr stack mounts that single
+	# directory and hardlinks between them (see services/arr).
+	mkdir -p "$STORAGE_PATH/media/shows" "$STORAGE_PATH/media/movies" "$STORAGE_PATH/media/downloads"
 fi
 
 # ─── Per-service secrets ─────────────────────────────────────────────────────
@@ -180,12 +184,14 @@ init_service_env vaultwarden
 init_service_env ente
 init_service_env open-webui
 init_service_env dispatcharr
+init_service_env homarr
 init_service_env jellyfin
 init_service_env backup
 
 fill_secret services/pocket-id/.env   ENCRYPTION_KEY      "$(gen_hex)"
 fill_secret services/vaultwarden/.env ADMIN_TOKEN         "$(gen_base64)"
 fill_secret services/open-webui/.env  WEBUI_SECRET_KEY      "$(gen_hex)"
+fill_secret services/homarr/.env      SECRET_ENCRYPTION_KEY "$(gen_hex)"
 
 # Restic repo password is a TIER-1 secret: lose it and every backup is
 # unrecoverable. Warn loudly the first time we generate one so the admin

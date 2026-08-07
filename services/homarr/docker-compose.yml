@@ -1,0 +1,38 @@
+# ── Homarr (dashboard) ──────────────────────────────────────────────────────
+# Tile dashboard for the stack — service links, health, and app integrations
+# (the *arrs, qBittorrent, Jellyfin) configured in its UI with per-app API
+# keys. This fills the "Homepage dashboard" slot from the deferred admin
+# front-door plan; Homarr also speaks OIDC, so gating it through Pocket ID is
+# the natural upgrade when it graduates from admin-plane to member-facing.
+# Until then: loopback-only, no Caddy route (docs/ADMIN_ACCESS.md).
+#
+# Reaching the *arr stack from tiles: those containers share arr-vpn's netns,
+# so from the coralstack network their UIs are http://arr-vpn:8989 (Sonarr),
+# :7878 (Radarr), :9696 (Prowlarr), :8090 (qBittorrent) — NOT the container
+# names. Dispatcharr likewise via http://dispatcharr-vpn:9191.
+#
+# Deliberately NOT mounting docker.sock: Homarr's docker widget is
+# nice-to-have, and a dashboard shouldn't hold root-equivalent host access —
+# that's Portainer's job, behind its own gate.
+#
+# FIRST RUN: onboarding at the UI asks you to create the admin credentials
+# yourself (over the ssh tunnel).
+services:
+  homarr:
+    image: ghcr.io/homarr-labs/homarr:v1.32.0
+    container_name: homarr
+    restart: unless-stopped
+    # SECRET_ENCRYPTION_KEY (64 hex chars) encrypts stored integration API keys
+    # at rest; generated into the gitignored .env by setup.sh. Changing it
+    # invalidates every stored integration secret.
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      TZ: ${TZ}
+    volumes:
+      - ${DATA_PATH:?DATA_PATH must be set (run ./setup.sh which resolves it to an absolute path)}/homarr:/appdata
+    # Admin-plane: loopback only.
+    #   ssh -L 7575:localhost:7575 coralstack-apps → http://localhost:7575
+    ports:
+      - "127.0.0.1:7575:7575"

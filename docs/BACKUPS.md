@@ -50,7 +50,7 @@ restore source.
 | All other service configs under `${DATA_PATH}` | Jellyfin/Dispatcharr/Open WebUI settings, Caddy data, etc. |
 | The compose tree (`/config`), incl. gitignored `services/*/.env` | The hand-created secret files exist **only on this host** — without them a rebuild means re-deriving every service secret while Vaultwarden (which holds them) is itself down. |
 | **Excluded by default** | **Why** |
-| `/storage/music`, `/storage/movies`, `/storage/shows` (media libraries) | Large and *re-acquirable* — members keep originals; music is re-rippable/re-downloadable; recordings can be re-captured. Sending TBs to metered cloud buys no durability. Flip `BACKUP_EXCLUDES` to include them. |
+| `/storage/music`, `/storage/movies`, `/storage/media` (music + movie libraries; `media/` holds the TV library and download landing area) | Large and *re-acquirable* — members keep originals; music is re-rippable/re-downloadable; recordings can be re-captured. Sending TBs to metered cloud buys no durability. Flip `BACKUP_EXCLUDES` to include them. |
 | `/data/jellyfin/cache` | Transient transcode/image cache. |
 | `/data/backup` | Our own staging + cache + local repo — never capture ourselves. |
 | `/config/data`, `/config/.git` | `/config/data` is the same tree as `/data`; git history lives on GitHub. |

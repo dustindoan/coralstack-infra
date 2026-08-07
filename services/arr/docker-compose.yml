@@ -8,9 +8,12 @@
 #   Prowlarr    :9696  — indexer manager, syncs indexers to Sonarr/Radarr
 #   qBittorrent :8090  — download client, lands in /data/downloads
 #
-# NO INDEXERS ARE CONFIGURED. The stack ships inert and stays that way until
-# the content-origination box's Torznab/RSS feed exists — that's the designed
-# source, not public indexers.
+# INDEXERS ARE RUNTIME CONFIG, NOT REPO STATE: the compose ships no indexers;
+# what the stack actually points at lives in Prowlarr's UI (admin's call, on
+# the admin's liability). The content-origination box's Torznab/RSS feed is
+# the planned first-party source; as of 2026-08 the admin has also configured
+# a public indexer in Prowlarr — which is exactly why every byte of this
+# stack's egress rides the VPN below.
 #
 # Storage: every *arr and the download client mount the same single
 # ${STORAGE_PATH}/media directory as /data. ONE mount, not per-folder binds —

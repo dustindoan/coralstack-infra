@@ -110,6 +110,7 @@ mkdir -p \
 	"$DATA_PATH/vaultwarden" \
 	"$DATA_PATH/jellyfin/config" "$DATA_PATH/jellyfin/cache" \
 	"$DATA_PATH/dispatcharr" \
+	"$DATA_PATH/sonarr" \
 	"$DATA_PATH/ente/postgres" "$DATA_PATH/ente/museum-data" \
 	"$DATA_PATH/open-webui" \
 	"$DATA_PATH/uptime-kuma" \
@@ -121,6 +122,11 @@ mkdir -p \
 # the compose's ${STORAGE_PATH:?...} guard will fail fast with a clear error.
 if [[ -d "$STORAGE_PATH" ]]; then
 	mkdir -p "$STORAGE_PATH/ente-minio"
+	# The *arr-managed root. shows/ is the library Jellyfin mounts read-only;
+	# downloads/ is the landing area a download client writes into. Both live
+	# under media/ so Sonarr can mount that single directory and hardlink
+	# between them (see services/sonarr).
+	mkdir -p "$STORAGE_PATH/media/shows" "$STORAGE_PATH/media/downloads"
 fi
 
 # ─── Per-service secrets ─────────────────────────────────────────────────────

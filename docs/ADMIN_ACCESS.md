@@ -126,6 +126,7 @@ This is the authoritative list. Keep in sync with reality.
 | OPNsense | 443 | LAN + OPT1 NICs | `https://10.0.0.1` from LAN | `https://opnsense.fw` |
 | TubeArchivist | 8000 | 127.0.0.1 | `ssh -L 8000:localhost:8000 nuc` | `https://tube.nuc` |
 | Dispatcharr | 9191 | 127.0.0.1 (port published by `dispatcharr-vpn` Gluetun sidecar) | `ssh -L 9191:localhost:9191 coralstack-apps` | `https://tv.nuc` |
+| Sonarr | 8989 | 127.0.0.1 | `ssh -L 8989:localhost:8989 coralstack-apps` | `https://sonarr.nuc` |
 | CoralStack admin panel | 9090 | 127.0.0.1 | `ssh -L 9090:localhost:9090 coralstack-apps` — **no login of its own**: SSH possession is the credential (loopback rule); cross-site POSTs rejected, actions confirm-gated. See [services/admin-panel](../services/admin-panel/docker-compose.yml), [ENTE_STORAGE.md](ENTE_STORAGE.md) | `https://admin.nuc` |
 | MinIO console (Ente) | 3201 | container network only | `docker compose exec` or `ssh -L 3201:ente-minio:3201 nuc` | (no change — internal only) |
 

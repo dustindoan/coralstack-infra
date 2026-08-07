@@ -46,11 +46,13 @@ services:
         required: false
     volumes:
       - ./expressvpn.ovpn:/gluetun/custom.ovpn:ro
-    # This container owns Sonarr's published port (see network_mode below).
-    # Admin-plane: loopback only — no Caddy route/alias. Reach via:
-    #   ssh -L 8989:localhost:8989 coralstack-apps
+    # This container owns the published ports for everything sharing its netns
+    # (Sonarr :8989, qBittorrent :8090 — see network_mode below). Admin-plane:
+    # loopback only — no Caddy route/alias. Reach via:
+    #   ssh -L 8989:localhost:8989 -L 8090:localhost:8090 coralstack-apps
     ports:
       - "127.0.0.1:8989:8989"
+      - "127.0.0.1:8090:8090"
     environment:
       VPN_SERVICE_PROVIDER: custom
       VPN_TYPE: openvpn
@@ -99,4 +101,40 @@ services:
       # Read-WRITE: Sonarr owns renames + imports. Jellyfin mounts the same
       # library subdirs read-only (services/jellyfin) and picks up new episodes
       # via its real-time monitor.
+      - ${STORAGE_PATH:?STORAGE_PATH must be set in .env}/media:/data
+
+  # ── qBittorrent (download client) ───────────────────────────────────────────
+  # Shares the VPN netns like Sonarr: ALL peer/tracker traffic egresses through
+  # the tunnel with the same fail-closed kill-switch, and Sonarr reaches the
+  # WebUI at http://localhost:8090 (same netns = same localhost). ExpressVPN
+  # does no port forwarding, so no inbound peer connections — fine for grabbing
+  # from a webseed-backed origination feed; would matter for seeding ratio on
+  # real swarms.
+  #
+  # First-run setup (one-time, in the WebUI at localhost:8090 via the ssh -L):
+  #   - login: user `admin`, password from `docker logs qbittorrent` (temporary,
+  #     printed once per start until you set one in Options → WebUI)
+  #   - Options → Downloads → Default Save Path: /data/downloads
+  #   - then in Sonarr: Settings → Download Clients → qBittorrent,
+  #     host localhost, port 8090
+  # Same single /data mount as Sonarr, so Sonarr's imports hardlink from
+  # /data/downloads into /data/shows instead of copying.
+  qbittorrent:
+    image: linuxserver/qbittorrent:5.2.3
+    container_name: qbittorrent
+    restart: unless-stopped
+    network_mode: "service:sonarr-vpn"
+    depends_on:
+      sonarr-vpn:
+        condition: service_healthy
+    environment:
+      TZ: ${TZ}
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      # linuxserver knob for the WebUI port. 8090 instead of the image default
+      # 8080 to keep clear of other admin-plane tunnels.
+      WEBUI_PORT: "8090"
+    volumes:
+      - ${DATA_PATH:?DATA_PATH must be set (run ./setup.sh which resolves it to an absolute path)}/qbittorrent:/config
+      # Same mount as Sonarr — see the hardlink note on Sonarr's volumes.
       - ${STORAGE_PATH:?STORAGE_PATH must be set in .env}/media:/data

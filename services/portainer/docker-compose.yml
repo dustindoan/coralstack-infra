@@ -1,0 +1,29 @@
+# ── Portainer CE (Docker management UI) ─────────────────────────────────────
+# Web UI over the box's Docker daemon: container state, logs, exec, stack
+# redeploys. Complements (doesn't replace) the git-pull + compose deploy flow —
+# treat it as a window and a break-glass lever, not the source of truth; the
+# compose files in this repo remain the only place topology changes land.
+#
+# SECURITY: mounting /var/run/docker.sock is root-equivalent on the host —
+# anyone in this UI can start a privileged container. That is why it follows
+# the strictest admin-plane rules: loopback-only bind, no Caddy route, no
+# network alias (docs/ADMIN_ACCESS.md). SSH possession is the outer gate.
+#
+# FIRST RUN: Portainer requires creating the admin user within ~5 minutes of
+# first start, then locks itself ("timed out for security purposes"). If you
+# miss the window: docker compose restart portainer and try again. Create that
+# account yourself over the ssh tunnel; treat it as a Tier-2 secret
+# (Vaultwarden).
+services:
+  portainer:
+    image: portainer/portainer-ce:2.44.0
+    container_name: portainer
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${DATA_PATH:?DATA_PATH must be set (run ./setup.sh which resolves it to an absolute path)}/portainer:/data
+    # Admin-plane: loopback only. Portainer serves HTTPS with a self-signed
+    # cert on 9443 (the browser warning over the ssh tunnel is expected).
+    #   ssh -L 9443:localhost:9443 coralstack-apps → https://localhost:9443
+    ports:
+      - "127.0.0.1:9443:9443"

@@ -1,0 +1,169 @@
+# ── *arr stack (Sonarr, Radarr, Prowlarr, qBittorrent) ──────────────────────
+# Media automation behind one shared VPN sidecar. Everything here shares
+# arr-vpn's network namespace, so all inter-service wiring is plain
+# localhost:<port> and ALL egress rides the tunnel with the same fail-closed
+# kill-switch:
+#   Sonarr      :8989  — TV library manager, imports into /data/shows
+#   Radarr      :7878  — movie library manager, imports into /data/movies
+#   Prowlarr    :9696  — indexer manager, syncs indexers to Sonarr/Radarr
+#   qBittorrent :8090  — download client, lands in /data/downloads
+#
+# NO INDEXERS ARE CONFIGURED. The stack ships inert and stays that way until
+# the content-origination box's Torznab/RSS feed exists — that's the designed
+# source, not public indexers.
+#
+# Storage: every *arr and the download client mount the same single
+# ${STORAGE_PATH}/media directory as /data. ONE mount, not per-folder binds —
+# separate binds are separate mount points in-container, link() across them
+# returns EXDEV, and the *arrs silently degrade from hardlinking to copying
+# (slow, double space, breaks seeding). Jellyfin mounts the library subdirs
+# read-only at unchanged container paths (services/jellyfin).
+services:
+  # ── VPN egress sidecar ──────────────────────────────────────────────────────
+  # (Renamed from sonarr-vpn when the stack grew past Sonarr.) Same rationale
+  # and gotchas as dispatcharr-vpn — read that compose file's header for the
+  # full ExpressVPN custom-OpenVPN explanation; it applies here verbatim.
+  #
+  # Deliberately a SEPARATE Gluetun instance rather than sharing dispatcharr-vpn:
+  # the media-automation stack and Live TV stay independently restartable. One
+  # ExpressVPN credential pair covers both tunnels.
+  #
+  # Setup — expressvpn.com → Advanced Setup → Manual Configuration → OpenVPN:
+  #   - OpenVPN username + password (NOT your account login) → services/arr/.env
+  #   - a server .ovpn → services/arr/expressvpn.ovpn (gitignored; may be a
+  #     copy of the one under services/dispatcharr)
+  # GOTCHA: Gluetun's custom parser rejects a hostname in the `remote` line
+  # (gluetun#2769). After downloading, replace it with the resolved IP:
+  #   host=$(awk '/^remote /{print $2; exit}' expressvpn.ovpn); ip=$(getent hosts "$host" | awk '{print $1; exit}')
+  #   sed -i "s|^remote $host |remote $ip |" expressvpn.ovpn
+  # Re-do this on every .ovpn swap. Do NOT set SERVER_COUNTRIES/CITIES.
+  #
+  # FAIL-CLOSED: the whole stack shares this netns and Gluetun default-drops
+  # non-tunnel egress. Tunnel down = traffic BLOCKED, never rerouted to the
+  # residential WAN. ExpressVPN does no port forwarding, so no inbound peer
+  # connections — fine for webseed grabs from the origination feed; matters
+  # for seeding ratio on real swarms.
+  arr-vpn:
+    image: qmcgaw/gluetun:v3.41.1
+    container_name: arr-vpn
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    # OPENVPN_USER, OPENVPN_PASSWORD. Compose ${...} interpolation only reads the
+    # root .env, so per-service secrets come via env_file (same as dispatcharr).
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ./expressvpn.ovpn:/gluetun/custom.ovpn:ro
+    # This container owns the published ports for everything sharing its netns.
+    # Admin-plane: loopback only — no Caddy route/alias (docs/ADMIN_ACCESS.md).
+    # Reach via: ssh -L <port>:localhost:<port> coralstack-apps
+    ports:
+      - "127.0.0.1:8989:8989" # Sonarr
+      - "127.0.0.1:7878:7878" # Radarr
+      - "127.0.0.1:9696:9696" # Prowlarr
+      - "127.0.0.1:8090:8090" # qBittorrent
+    environment:
+      VPN_SERVICE_PROVIDER: custom
+      VPN_TYPE: openvpn
+      OPENVPN_CUSTOM_CONFIG: /gluetun/custom.ovpn
+      # Kill-switch allows replies to the coralstack Docker subnet so the
+      # loopback admin tunnels and Homarr's dashboard tiles (which call
+      # arr-vpn:<port> from the coralstack network) reach the web UIs without
+      # being forced through the tunnel. = `docker network inspect coralstack`
+      # subnet.
+      #
+      # NOTE (deferred): when the content-origination box lands on the LAN,
+      # the *arrs won't be able to reach it — the kill-switch drops LAN-bound
+      # egress. Add the LAN subnet here at that point.
+      FIREWALL_OUTBOUND_SUBNETS: 172.18.0.0/16
+      TZ: ${TZ}
+    networks:
+      - default
+
+  # ── Sonarr (TV) ─────────────────────────────────────────────────────────────
+  sonarr:
+    image: linuxserver/sonarr:4.0.19
+    container_name: sonarr
+    restart: unless-stopped
+    # Share the VPN sidecar's netns: egress through the tunnel, UI published via
+    # the sidecar's ports. A container using network_mode: service:* CANNOT also
+    # join the coralstack network — reachability comes from the sidecar.
+    network_mode: "service:arr-vpn"
+    depends_on:
+      arr-vpn:
+        condition: service_healthy
+    environment:
+      TZ: ${TZ}
+      # linuxserver images drop privileges to this uid/gid, which must own
+      # ${STORAGE_PATH}/media or imports fail with permission errors. Defaults
+      # suit a single-admin Ubuntu box (first user = 1000).
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+    volumes:
+      - ${DATA_PATH:?DATA_PATH must be set (run ./setup.sh which resolves it to an absolute path)}/sonarr:/config
+      - ${STORAGE_PATH:?STORAGE_PATH must be set in .env}/media:/data
+
+  # ── Radarr (movies) ─────────────────────────────────────────────────────────
+  # Root folder (set in the UI): /data/movies — the library Jellyfin mounts
+  # read-only at /media/movies.
+  radarr:
+    image: linuxserver/radarr:6.3.0
+    container_name: radarr
+    restart: unless-stopped
+    network_mode: "service:arr-vpn"
+    depends_on:
+      arr-vpn:
+        condition: service_healthy
+    environment:
+      TZ: ${TZ}
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+    volumes:
+      - ${DATA_PATH:?DATA_PATH must be set (run ./setup.sh which resolves it to an absolute path)}/radarr:/config
+      - ${STORAGE_PATH:?STORAGE_PATH must be set in .env}/media:/data
+
+  # ── Prowlarr (indexer manager) ──────────────────────────────────────────────
+  # One place to register indexers; it syncs them to Sonarr + Radarr and
+  # proxies their searches. Wire the apps in ITS UI (Settings → Apps): both
+  # Prowlarr Server and the app URLs are localhost (shared netns) —
+  # http://localhost:9696 / :8989 / :7878, API keys from each app's
+  # Settings → General. Sits EMPTY until the origination feed exists.
+  prowlarr:
+    image: linuxserver/prowlarr:2.5.2
+    container_name: prowlarr
+    restart: unless-stopped
+    network_mode: "service:arr-vpn"
+    depends_on:
+      arr-vpn:
+        condition: service_healthy
+    environment:
+      TZ: ${TZ}
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+    volumes:
+      - ${DATA_PATH:?DATA_PATH must be set (run ./setup.sh which resolves it to an absolute path)}/prowlarr:/config
+
+  # ── qBittorrent (download client) ───────────────────────────────────────────
+  # WEBUI_PORT moved off the image-default 8080 to keep clear of other
+  # admin-plane tunnels. Save path (set in UI): /data/downloads. Sonarr/Radarr
+  # reach it at localhost:8090.
+  qbittorrent:
+    image: linuxserver/qbittorrent:5.2.3
+    container_name: qbittorrent
+    restart: unless-stopped
+    network_mode: "service:arr-vpn"
+    depends_on:
+      arr-vpn:
+        condition: service_healthy
+    environment:
+      TZ: ${TZ}
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      WEBUI_PORT: "8090"
+    volumes:
+      - ${DATA_PATH:?DATA_PATH must be set (run ./setup.sh which resolves it to an absolute path)}/qbittorrent:/config
+      - ${STORAGE_PATH:?STORAGE_PATH must be set in .env}/media:/data

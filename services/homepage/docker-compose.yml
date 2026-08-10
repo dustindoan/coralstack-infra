@@ -38,6 +38,11 @@ services:
     volumes:
       # Config-as-code: read-only so the container can't drift from the repo.
       - ./config:/app/config:ro
+      # ...but Homepage writes its logs inside /app/config, so a read-only mount
+      # alone crashes it at boot with `ENOENT: mkdir '/app/config/logs'` (HTTP
+      # 500, container still reports healthy). A nested read-write mount keeps
+      # the config immutable while giving the logger somewhere to go.
+      - ${DATA_PATH:?DATA_PATH must be set (run ./setup.sh which resolves it to an absolute path)}/homepage/logs:/app/config/logs
     # Admin-plane: loopback only — no Caddy route/alias (docs/ADMIN_ACCESS.md).
     #   ssh -L 3000:localhost:3000 coralstack-apps → http://localhost:3000
     ports:

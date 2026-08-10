@@ -1,4 +1,0 @@
-Homepage writes its logfile into /app/config/logs. The config dir is mounted
-read-only, and Docker cannot create a mountpoint inside a read-only mount — so
-this directory must exist in the repo for the nested read-write logs bind
-(see ../../docker-compose.yml) to attach. Keep this file.

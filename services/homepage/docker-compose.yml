@@ -36,13 +36,18 @@ services:
       # the ssh tunnel. Covers loopback now and the MagicDNS name later.
       HOMEPAGE_ALLOWED_HOSTS: localhost:3000,127.0.0.1:3000,home.nuc
     volumes:
-      # Config-as-code: read-only so the container can't drift from the repo.
-      - ./config:/app/config:ro
-      # ...but Homepage writes its logs inside /app/config, so a read-only mount
-      # alone crashes it at boot with `ENOENT: mkdir '/app/config/logs'` (HTTP
-      # 500, container still reports healthy). A nested read-write mount keeps
-      # the config immutable while giving the logger somewhere to go.
-      - ${DATA_PATH:?DATA_PATH must be set (run ./setup.sh which resolves it to an absolute path)}/homepage/logs:/app/config/logs
+      # Config-as-code: the four *.yaml files here are committed, so the
+      # dashboard is version-controlled and a fresh setup.sh recreates it.
+      #
+      # Mounted READ-WRITE deliberately, after trying the opposite: Homepage
+      # owns this directory. On boot it initializes any skeleton config it's
+      # missing (kubernetes.yaml, docker.yaml, custom.css/js) and writes its
+      # logfile to config/logs. With `:ro` it crashlooped —
+      # `EROFS: copyfile ... -> /app/config/kubernetes.yaml`, and its own error
+      # hint says to make the directory writable. The files it generates are
+      # gitignored (see .gitignore) so they don't dirty the working tree on the
+      # box; the four we care about stay tracked.
+      - ./config:/app/config
     # Admin-plane: loopback only — no Caddy route/alias (docs/ADMIN_ACCESS.md).
     #   ssh -L 3000:localhost:3000 coralstack-apps → http://localhost:3000
     ports:

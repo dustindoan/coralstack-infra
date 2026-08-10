@@ -45,7 +45,9 @@ back into this roadmap and into memory for items that don't yet have docs.
 | Dispatcharr (IPTV → Jellyfin Live TV) | ✅ deployed (admin-plane) | [services/dispatcharr](../services/dispatcharr/docker-compose.yml), [ADMIN_ACCESS.md](ADMIN_ACCESS.md) |
 | Open WebUI | ✅ deployed (Ollama on Mac mini) | [PROXMOX_MIGRATION.md](PROXMOX_MIGRATION.md) Phase 4c |
 | Uptime Kuma (monitoring + public `status.` page) | 🚧 in repo, deploy pending | [services/uptime-kuma](../services/uptime-kuma/docker-compose.yml) — independent status page mitigates the PWA failure-state trap; hosts the backup dead-man's-switch |
-| TubeArchivist | 🚧 in progress | (this branch) |
+| *arr stack (Sonarr/Radarr/Prowlarr/qBittorrent) | ✅ deployed (admin-plane, shared `arr-vpn` Gluetun netns) | [services/arr](../services/arr/docker-compose.yml) — single `${STORAGE_PATH}/media` mount so imports hardlink; indexers are runtime config, not repo state |
+| Portainer (Docker management) | ✅ deployed (admin-plane) | [services/portainer](../services/portainer/docker-compose.yml) — holds `docker.sock`, so strictest gate; a window + break-glass lever, not the source of truth |
+| YouTube archiving (TubeArchivist vs Pinchflat) | 💭 undecided | Neither deployed. Pinchflat fits the stack better (one container, writes NFO into a Jellyfin library) but upstream has been dormant since 2025-12; TubeArchivist is actively maintained but needs Elasticsearch + Redis and wants to be its own frontend |
 | Music acquisition pipeline (buy → beets → Jellyfin) | 💭 specced (hand-off) | [MUSIC_ACQUISITION.md](MUSIC_ACQUISITION.md) — ongoing purchase→library workflow (gate #2); existing-library migration is a separate member-side tool, home TBD (was planned for the now-archived coralstack-migrator) |
 
 ### Infrastructure
@@ -76,7 +78,9 @@ again" makes backups non-negotiable.
 | ---- | ------ | --- |
 | Headscale (self-hosted tailnet) | 📋 specced | [HEADSCALE.md](HEADSCALE.md) |
 | GPU transcoding (Jellyfin QSV via iGPU passthrough) | ✅ done (2026-06-23) | [GPU_TRANSCODING.md](GPU_TRANSCODING.md) — Iris 650 passed to apps VM 101; Jellyfin has /dev/dri. Remaining: enable QSV in Jellyfin UI |
-| Admin front door (Homepage dashboard + admin-SSO) | 💭 captured, not built | [memory](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_admin_dashboard.md) — 3 layers: Homepage / Headscale reachability / forward_auth gate. Proxmox-OIDC + Dispatcharr#806 noted |
+| Admin front door **layer 1** — Homepage dashboard | ✅ deployed (admin-plane) | [services/homepage](../services/homepage/docker-compose.yml) — config-as-code YAML in the repo. Homarr was tried 2026-08-07 and removed: boards/integrations live only in its SQLite DB with no API to write them, so every install needs manual UI work |
+| Admin front door **layer 2** — reachability (Headscale) | 📋 specced, **trigger fired** | [HEADSCALE.md](HEADSCALE.md) — the ssh-tunnel toll is now the top usability complaint (7 forwarded ports to use the dashboard's own links). Next discrete project |
+| Admin front door **layer 3** — SSO gate (Caddy forward_auth → Pocket ID) | 📋 deferred, see caveat | [ADMIN_ACCESS.md](ADMIN_ACCESS.md#phase-2) — scoped to the *second admin* case. Two things to know before building: it reverses [the loopback rule](ADMIN_ACCESS.md#the-rule) by exposing admin UIs via Caddy, and on its own it only *adds* a login — collapsing to one login also needs each *arr set to `External` authentication |
 | Backup strategy implementation | ✅ deployed + restore-tested (DBs+configs to B2 CA-East); photo upload deferred until migration settles | [BACKUPS.md](BACKUPS.md) — restic+rclone service ([services/backup](../services/backup/)), cloud-agnostic |
 | Service update strategy (pin tags → Renovate → agent) | ✅ detection live | [APP_UPDATES.md](APP_UPDATES.md) — all tags pinned, Renovate app installed + opening bump PRs (2026-07-17); lettabot triage layered later |
 | Deploy primitive + admin-panel Deploy button (`main` → box) | 💭 specced, buildable | [DEPLOY_ARCHITECTURE.md](DEPLOY_ARCHITECTURE.md) — idempotent snapshot→apply→health-gate→rollback; three triggers (CLI/panel/agent); pull-only; closes the *merged-but-not-deployed* gap |

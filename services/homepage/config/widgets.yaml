@@ -1,0 +1,17 @@
+# Header widgets — host vitals for the apps VM.
+#
+# Deliberately minimal. The interesting per-service state (queues, now-playing,
+# download rate) lives on the service tiles in services.yaml, not up here.
+
+- resources:
+    cpu: true
+    memory: true
+    # The root filesystem. Worth watching: the mount-points-fail-closed
+    # convention means a vanished USB disk shows up as services failing loudly
+    # rather than root filling — but root filling is still the thing that takes
+    # the box down.
+    disk: /
+
+- search:
+    provider: duckduckgo
+    target: _blank

@@ -11,7 +11,7 @@ include:
   - services/dispatcharr/docker-compose.yml
   - services/arr/docker-compose.yml
   - services/portainer/docker-compose.yml
-  - services/homarr/docker-compose.yml
+  - services/homepage/docker-compose.yml
   - services/open-webui/docker-compose.yml
   - services/uptime-kuma/docker-compose.yml
   - services/backup/docker-compose.yml

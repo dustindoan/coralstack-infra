@@ -1,0 +1,44 @@
+# ── Homepage (admin front door, layer 1 of 3) ───────────────────────────────
+# Single pane over every coralstack service. Layer 1 of the three-layer admin
+# front door in docs/ROADMAP.md (Phase 1.5): dashboard → reachability
+# (Headscale) → SSO gate (Caddy forward_auth). This is only the dashboard;
+# reaching the admin-plane links still needs the ssh tunnel until Headscale
+# lands. See docs/ADMIN_ACCESS.md.
+#
+# WHY HOMEPAGE AND NOT HOMARR: config is YAML in this repo (./config, mounted
+# read-only), so the dashboard is version-controlled, reviewable, and recreated
+# for free by a fresh `setup.sh` run — including on a future co-op host that
+# clones this repo. Homarr was briefly deployed 2026-08-07 and removed: its
+# boards and integrations live only in its SQLite DB with no API to write them
+# (`/api/openapi` covers apps/users only; board mutations reject API-key auth),
+# so every install would need manual UI work. That collides with the
+# install-simplicity target and with "trial state is expendable".
+#
+# SECRETS: never put API keys in ./config — it's committed. Homepage substitutes
+# {{HOMEPAGE_VAR_*}} from the environment; the values live in the gitignored
+# services/homepage/.env. See .env.example.
+#
+# NO docker.sock: same call as Homarr — a dashboard shouldn't hold
+# root-equivalent host access. Container management is Portainer's job, behind
+# its own gate.
+services:
+  homepage:
+    image: ghcr.io/gethomepage/homepage:v1.4.5
+    container_name: homepage
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      TZ: ${TZ}
+      # Required since Homepage v1.0 — it rejects requests whose Host header
+      # isn't listed, which otherwise presents as a blank page or a 400 behind
+      # the ssh tunnel. Covers loopback now and the MagicDNS name later.
+      HOMEPAGE_ALLOWED_HOSTS: localhost:3000,127.0.0.1:3000,home.nuc
+    volumes:
+      # Config-as-code: read-only so the container can't drift from the repo.
+      - ./config:/app/config:ro
+    # Admin-plane: loopback only — no Caddy route/alias (docs/ADMIN_ACCESS.md).
+    #   ssh -L 3000:localhost:3000 coralstack-apps → http://localhost:3000
+    ports:
+      - "127.0.0.1:3000:3000"

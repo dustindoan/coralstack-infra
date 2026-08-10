@@ -115,7 +115,6 @@ mkdir -p \
 	"$DATA_PATH/prowlarr" \
 	"$DATA_PATH/qbittorrent" \
 	"$DATA_PATH/portainer" \
-	"$DATA_PATH/homarr" \
 	"$DATA_PATH/ente/postgres" "$DATA_PATH/ente/museum-data" \
 	"$DATA_PATH/open-webui" \
 	"$DATA_PATH/uptime-kuma" \
@@ -184,14 +183,19 @@ init_service_env vaultwarden
 init_service_env ente
 init_service_env open-webui
 init_service_env dispatcharr
-init_service_env homarr
+init_service_env homepage
 init_service_env jellyfin
 init_service_env backup
 
 fill_secret services/pocket-id/.env   ENCRYPTION_KEY      "$(gen_hex)"
 fill_secret services/vaultwarden/.env ADMIN_TOKEN         "$(gen_base64)"
 fill_secret services/open-webui/.env  WEBUI_SECRET_KEY      "$(gen_hex)"
-fill_secret services/homarr/.env      SECRET_ENCRYPTION_KEY "$(gen_hex)"
+
+# Homepage's committed config references {{HOMEPAGE_VAR_BASE_DOMAIN}} for the
+# member-facing links; keep it in sync with the root .env. The widget API keys
+# in that file stay blank — they're per-install and optional (a blank key just
+# means a link + status dot instead of a live widget).
+[[ -f services/homepage/.env ]] && set_value services/homepage/.env HOMEPAGE_VAR_BASE_DOMAIN "$BASE_DOMAIN"
 
 # Restic repo password is a TIER-1 secret: lose it and every backup is
 # unrecoverable. Warn loudly the first time we generate one so the admin

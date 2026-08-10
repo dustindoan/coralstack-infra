@@ -85,3 +85,89 @@ The Headscale exposure is additive.
 Trigger: **the next time you find yourself running more than two `ssh -L` flags
 in one command, OR the first time you want to admin something from a phone.**
 Until then, Phase 1 is fine.
+
+**TRIGGER FIRED 2026-08-10.** The working admin command is now seven forwards:
+
+```bash
+ssh -L 8989:localhost:8989 -L 7878:localhost:7878 -L 9696:localhost:9696 \
+    -L 8090:localhost:8090 -L 3000:localhost:3000 -L 9443:localhost:9443 \
+    -L 9191:localhost:9191 coralstack-apps
+```
+
+---
+
+## Hand-off — start here next session
+
+State as of 2026-08-10. Layer 1 of the admin front door
+([ROADMAP](ROADMAP.md) Phase 1.5) is done: Homepage is deployed and lists every
+service. This is layer 2. Layer 3 (forward_auth) stays deferred.
+
+### Decision to make first
+
+**Where Headscale runs** — the sketch above leans OPNsense VM (option 1) but it
+was written before the apps VM filled up with services. Settle this before
+touching anything, because it determines how the control plane is reachable.
+
+Related and unresolved: Headscale needs a **publicly reachable endpoint** for
+clients to coordinate against. The box sits behind eero double-NAT with a single
+443 forward (see [NETWORK_TOPOLOGY.md](NETWORK_TOPOLOGY.md) and the
+product-topology memory). Options: a Caddy route on `tailnet.<BASE_DOMAIN>`, or
+a second forwarded port. Decide alongside placement.
+
+**Also expect to need a DERP relay.** Double-NAT (eero in front of OPNsense) is
+exactly the shape where direct NAT punching fails and traffic falls back to a
+relay. Tailscale's public DERP servers work with Headscale out of the box, but
+that quietly reintroduces a third-party dependency the whole exercise is meant
+to avoid — self-hosting a DERP is the consistent choice, and it's extra work.
+Worth deciding deliberately rather than discovering.
+
+### The wrinkle the sketch above doesn't cover
+
+Step 4 says admin UIs "need their bind updated to also listen on `tailscale0`".
+That's still right, but note **how** it works for the VPN-netns services.
+
+Sonarr, Radarr, Prowlarr and qBittorrent have no network identity of their own —
+they share `arr-vpn`'s namespace, and *it* publishes their ports. Same for
+Dispatcharr via `dispatcharr-vpn`. Fortunately the `ports:` mapping is a
+**host-side** binding, so this does *not* require touching Gluetun's
+kill-switch or the netns. It's just:
+
+```yaml
+ports:
+  - "127.0.0.1:8989:8989"        # keep — loopback stays working
+  - "${TAILSCALE_IP}:8989:8989"  # add
+```
+
+Which means a new `TAILSCALE_IP` in the root `.env` (setup.sh should resolve it,
+since it's assigned by Headscale and differs per host). Services needing this:
+
+| Service | Port | Compose file |
+| ------- | ---- | ------------ |
+| Sonarr / Radarr / Prowlarr / qBittorrent | 8989 / 7878 / 9696 / 8090 | [services/arr](../services/arr/docker-compose.yml) (all on `arr-vpn`) |
+| Dispatcharr | 9191 | [services/dispatcharr](../services/dispatcharr/docker-compose.yml) (on `dispatcharr-vpn`) |
+| Homepage | 3000 | [services/homepage](../services/homepage/docker-compose.yml) |
+| Portainer | 9443 | [services/portainer](../services/portainer/docker-compose.yml) |
+| Admin panel | 9090 | [services/admin-panel](../services/admin-panel/docker-compose.yml) (not yet deployed) |
+
+### Homepage follow-up (cheap, do it last)
+
+Once MagicDNS names exist, [services/homepage/config/services.yaml](../services/homepage/config/services.yaml)
+needs its admin-plane `href` values changed from `http://localhost:<port>` to the
+MagicDNS name — one line per service, and the file is committed so it deploys by
+git pull. Leave `siteMonitor` alone: those are container-network URLs and are
+unaffected.
+
+Also add the MagicDNS hostname to `HOMEPAGE_ALLOWED_HOSTS` in
+[services/homepage/docker-compose.yml](../services/homepage/docker-compose.yml) —
+it currently lists `home.nuc` as a placeholder, which must be made to match the
+real name or Homepage will reject the requests.
+
+### Definition of done
+
+- Every admin UI in the [registry](ADMIN_ACCESS.md#registry-of-admin-uis)
+  reachable by MagicDNS name from the laptop **and** the phone, with no `ssh -L`
+- Loopback bindings still work (the rule is additive, not replaced)
+- Homepage links go to MagicDNS names
+- Registry table updated with the new names
+- Headscale's DB included in the backup set — losing it means re-enrolling every
+  device ([BACKUPS.md](BACKUPS.md))

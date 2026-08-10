@@ -1,0 +1,22 @@
+# Hardware and off-box admin UIs. These aren't coralstack services, so they're
+# bookmarks rather than monitored entries — Homepage can't reach them from the
+# container network, and per docs/ADMIN_ACCESS.md the hardware UIs stay
+# tailnet-only and are never exposed even behind SSO.
+
+- Hardware:
+    - Proxmox:
+        - abbr: PVE
+          href: https://proxmox.nuc:8006
+    - OPNsense:
+        - abbr: FW
+          # Reached through the SSH tunnel wrapper — see the `opnsense` shell
+          # helper (LocalForward 8443 → 10.0.0.1:443).
+          href: https://localhost:8443
+
+- Project:
+    - coralstack.org:
+        - abbr: WWW
+          href: https://coralstack.org
+    - Repo:
+        - abbr: GIT
+          href: https://github.com/dustindoan/coralstack-infra

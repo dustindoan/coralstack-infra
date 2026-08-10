@@ -131,7 +131,7 @@ This is the authoritative list. Keep in sync with reality.
 | Prowlarr | 9696 | 127.0.0.1 (port published by `arr-vpn` Gluetun sidecar) | `ssh -L 9696:localhost:9696 coralstack-apps` | `https://prowlarr.nuc` |
 | qBittorrent | 8090 | 127.0.0.1 (port published by `arr-vpn` Gluetun sidecar) | `ssh -L 8090:localhost:8090 coralstack-apps` | `https://qbit.nuc` |
 | Portainer | 9443 | 127.0.0.1 | `ssh -L 9443:localhost:9443 coralstack-apps` → `https://localhost:9443` (self-signed cert warning expected) — **holds docker.sock = root-equivalent on the host**; strictest gate | `https://portainer.nuc` |
-| Homarr | 7575 | 127.0.0.1 | `ssh -L 7575:localhost:7575 coralstack-apps` | `https://home.nuc` |
+| Homepage (admin front door) | 3000 | 127.0.0.1 | `ssh -L 3000:localhost:3000 coralstack-apps` — config-as-code in [services/homepage/config](../services/homepage/config); no auth of its own (SSH possession is the credential) | `https://home.nuc` |
 | CoralStack admin panel | 9090 | 127.0.0.1 | `ssh -L 9090:localhost:9090 coralstack-apps` — **no login of its own**: SSH possession is the credential (loopback rule); cross-site POSTs rejected, actions confirm-gated. See [services/admin-panel](../services/admin-panel/docker-compose.yml), [ENTE_STORAGE.md](ENTE_STORAGE.md) | `https://admin.nuc` |
 | MinIO console (Ente) | 3201 | container network only | `docker compose exec` or `ssh -L 3201:ente-minio:3201 nuc` | (no change — internal only) |
 

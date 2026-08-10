@@ -1,0 +1,26 @@
+title: CoralStack
+description: Admin front door
+
+# Fixed column order so the layout is deterministic across restarts and hosts —
+# part of the point of config-as-code.
+layout:
+  Household:
+    style: rows
+    columns: 2
+  Media automation:
+    style: rows
+    columns: 2
+  Platform:
+    style: rows
+    columns: 2
+
+headerStyle: clean
+theme: dark
+color: slate
+
+# Status dots come from each service's siteMonitor (see services.yaml).
+statusStyle: dot
+
+# No auth of its own — Homepage is loopback-bound and SSH possession is the
+# credential (docs/ADMIN_ACCESS.md). When the Phase 1.5 forward_auth gate lands,
+# that becomes the login instead.

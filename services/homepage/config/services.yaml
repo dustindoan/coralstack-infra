@@ -1,0 +1,128 @@
+# Homepage services — the admin front door's service list.
+#
+# TWO URLS PER SERVICE, and they are not interchangeable:
+#   href        — what YOUR BROWSER opens. Admin-plane services use
+#                 http://localhost:<port> and require the ssh tunnel
+#                 (docs/ADMIN_ACCESS.md); member-facing ones use their public
+#                 Caddy hostname. When Headscale lands (Phase 1.5) the
+#                 localhost ones become MagicDNS names — that's the only edit.
+#   siteMonitor — what HOMEPAGE'S CONTAINER checks for the status dot, and what
+#                 widgets query. Always a container-network URL.
+#
+# Services sharing the arr-vpn network namespace (Sonarr, Radarr, Prowlarr,
+# qBittorrent) are addressed as arr-vpn:<port> — their own container names do
+# NOT resolve, because they have no network identity of their own. Same for
+# Dispatcharr via dispatcharr-vpn.
+#
+# API keys are {{HOMEPAGE_VAR_*}} placeholders substituted from the gitignored
+# services/homepage/.env — never inline a secret here, this file is committed.
+
+- Household:
+    - Jellyfin:
+        icon: jellyfin.png
+        href: https://media.{{HOMEPAGE_VAR_BASE_DOMAIN}}
+        siteMonitor: http://jellyfin:8096
+        description: Movies, TV, music and Live TV
+        widget:
+          type: jellyfin
+          url: http://jellyfin:8096
+          key: "{{HOMEPAGE_VAR_JELLYFIN_KEY}}"
+          enableBlocks: true
+          enableNowPlaying: true
+
+    - Ente Photos:
+        icon: ente.png
+        href: https://photos.{{HOMEPAGE_VAR_BASE_DOMAIN}}
+        siteMonitor: http://ente-web:3000
+        description: Encrypted photo library
+
+    - Vaultwarden:
+        icon: vaultwarden.png
+        href: https://vault.{{HOMEPAGE_VAR_BASE_DOMAIN}}
+        siteMonitor: http://vaultwarden:80
+        description: Password vault (SSO via Pocket ID)
+
+    - Open WebUI:
+        icon: open-webui.png
+        href: https://ai.{{HOMEPAGE_VAR_BASE_DOMAIN}}
+        siteMonitor: http://open-webui:8080
+        description: Local AI chat (Ollama on the Mac mini)
+
+- Media automation:
+    # All admin-plane: ssh -L required until Headscale.
+    - Sonarr:
+        icon: sonarr.png
+        href: http://localhost:8989
+        siteMonitor: http://arr-vpn:8989
+        description: TV library manager
+        widget:
+          type: sonarr
+          url: http://arr-vpn:8989
+          key: "{{HOMEPAGE_VAR_SONARR_KEY}}"
+          enableQueue: true
+
+    - Radarr:
+        icon: radarr.png
+        href: http://localhost:7878
+        siteMonitor: http://arr-vpn:7878
+        description: Movie library manager
+        widget:
+          type: radarr
+          url: http://arr-vpn:7878
+          key: "{{HOMEPAGE_VAR_RADARR_KEY}}"
+          enableQueue: true
+
+    - Prowlarr:
+        icon: prowlarr.png
+        href: http://localhost:9696
+        siteMonitor: http://arr-vpn:9696
+        description: Indexer manager
+        widget:
+          type: prowlarr
+          url: http://arr-vpn:9696
+          key: "{{HOMEPAGE_VAR_PROWLARR_KEY}}"
+
+    - qBittorrent:
+        icon: qbittorrent.png
+        href: http://localhost:8090
+        siteMonitor: http://arr-vpn:8090
+        description: Download client (VPN egress)
+        widget:
+          type: qbittorrent
+          url: http://arr-vpn:8090
+          username: "{{HOMEPAGE_VAR_QBIT_USER}}"
+          password: "{{HOMEPAGE_VAR_QBIT_PASS}}"
+
+    - Dispatcharr:
+        icon: dispatcharr.png
+        href: http://localhost:9191
+        # Monitors the actual M3U output, not just the web root — this is the
+        # integration that silently breaks when the VPN tunnel drops, and the
+        # first thing to check when Jellyfin Live TV goes quiet.
+        siteMonitor: http://dispatcharr-vpn:9191/output/m3u
+        description: IPTV → Jellyfin Live TV
+
+- Platform:
+    - Pocket ID:
+        icon: pocket-id.png
+        href: https://id.{{HOMEPAGE_VAR_BASE_DOMAIN}}
+        siteMonitor: http://pocket-id:1411
+        description: Single sign-on (passkeys)
+
+    - Uptime Kuma:
+        icon: uptime-kuma.png
+        href: https://status.{{HOMEPAGE_VAR_BASE_DOMAIN}}
+        siteMonitor: http://uptime-kuma:3001
+        description: Monitoring and public status page
+
+    - Portainer:
+        icon: portainer.png
+        # Self-signed cert — the browser warning is expected.
+        href: https://localhost:9443
+        description: Docker management (holds docker.sock — treat carefully)
+
+    - Admin panel:
+        icon: mdi-tools
+        href: http://localhost:9090
+        siteMonitor: http://admin-panel:9090
+        description: Ente purge gauge + expedite actions

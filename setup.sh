@@ -115,7 +115,6 @@ mkdir -p \
 	"$DATA_PATH/prowlarr" \
 	"$DATA_PATH/qbittorrent" \
 	"$DATA_PATH/portainer" \
-	"$DATA_PATH/homepage/logs" \
 	"$DATA_PATH/ente/postgres" "$DATA_PATH/ente/museum-data" \
 	"$DATA_PATH/open-webui" \
 	"$DATA_PATH/uptime-kuma" \

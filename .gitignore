@@ -10,3 +10,12 @@ data/
 # Python bytecode
 __pycache__/
 *.pyc
+
+# Homepage initializes these skeleton configs and its logfile at boot; the
+# config dir is mounted read-write because it insists on owning them. Our four
+# real configs (services/settings/widgets/bookmarks.yaml) stay tracked.
+services/homepage/config/kubernetes.yaml
+services/homepage/config/docker.yaml
+services/homepage/config/custom.css
+services/homepage/config/custom.js
+services/homepage/config/logs/

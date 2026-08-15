@@ -290,6 +290,24 @@ Requires at least one purchase on the account to complete the entitlement step.
   new purchases into staging hands-off, keyed off a persistent **watermark** of
   fetched track IDs (so re-polls never re-download even after ingest drains
   staging). `qobuz-fetch.py` still works as a manual one-shot.
+
+  There is no purchase *event* — Qobuz's private API has no webhooks, so this is
+  a **level-triggered reconciliation loop**: each cycle re-enumerates everything
+  you own and downloads the difference. Nothing to miss, nothing to resync; if
+  the box is down when you buy, the next cycle just picks it up.
+
+  The watermark is therefore two-level (added 2026-08-14). Originally it tracked
+  only track IDs, and `album/get` was called for *every* purchased album on
+  *every* cycle — making per-cycle API cost O(albums ever purchased) rather than
+  O(new purchases). Invisible at 1 album (2 requests/cycle); ~19k requests/day at
+  200 albums, aimed at the one account that holds your purchases and must not get
+  flagged. Albums whose every track has landed are now recorded in
+  `complete_albums` and never re-expanded, so steady state is a single
+  `getUserPurchases` call per cycle at any library size. The stored track count
+  comes from `getUserPurchases` (not `album/get`) so the freshness check is
+  same-source: if a purchase later reports a different count — a re-issue or
+  deluxe edition — that album is re-expanded. Existing state files upgrade
+  themselves (albums expand once more, then get recorded); no migration needed.
 - **Acquisition — Bandcamp** — BandcampSync container, off-the-shelf, not yet added.
 
 The whole Qobuz lane is now hands-off end to end. The remaining store work is

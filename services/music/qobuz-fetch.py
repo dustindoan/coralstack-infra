@@ -26,6 +26,13 @@ re-fetched. When QOBUZ_STATE is set (the poll service sets it), successfully
 fetched track IDs are recorded there and skipped forever after, independent
 of whether the file is still in staging. Without QOBUZ_STATE (a plain manual
 run) it falls back to staging-presence only.
+
+The watermark also records albums whose every track has landed, so they are
+never re-expanded via `album/get`. This matters because the poll loop runs
+every 15 minutes forever: without it, per-cycle API cost grows with every
+album you have ever bought (200 albums ≈ 19k requests/day against the one
+account that holds your purchases). With it, steady state is a single
+`getUserPurchases` call per cycle regardless of library size.
 """
 
 import asyncio
@@ -59,7 +66,17 @@ def sanitize(name: str) -> str:
 
 
 class Watermark:
-    """Persistent set of already-fetched track IDs (survives staging drain).
+    """Persistent record of what's already been fetched (survives staging drain).
+
+    Two levels:
+      * fetched_track_ids — track IDs downloaded successfully.
+      * complete_albums   — {album_id: tracks_count} for albums whose every
+        track is in fetched_track_ids. Lets the poll loop skip the per-album
+        `album/get` expansion entirely, so steady-state cost is one API call
+        per cycle instead of one per album ever purchased. The stored count is
+        the one reported by `getUserPurchases` (NOT album/get) so the
+        freshness comparison is same-source: if a purchase later reports a
+        different track count, the album is re-expanded.
 
     No-op when path is None (manual runs). Writes atomically after every
     successful track so a crash mid-album never re-downloads what landed.
@@ -68,10 +85,17 @@ class Watermark:
     def __init__(self, path):
         self.path = path
         self.ids = set()
+        self.albums = {}
         if path and os.path.exists(path):
             try:
                 with open(path) as f:
-                    self.ids = set(json.load(f).get("fetched_track_ids", []))
+                    data = json.load(f)
+                self.ids = set(data.get("fetched_track_ids", []))
+                # Pre-album-watermark state files simply lack this key; those
+                # albums get expanded once more, then recorded.
+                self.albums = {
+                    str(k): v for k, v in data.get("complete_albums", {}).items()
+                }
             except (json.JSONDecodeError, OSError) as e:
                 print(f"  ! watermark unreadable ({e}); starting empty")
 
@@ -82,10 +106,40 @@ class Watermark:
         if not self.path:
             return
         self.ids.add(str(track_id))
-        os.makedirs(os.path.dirname(self.path), exist_ok=True)
+        self._save()
+
+    def album_is_complete(self, album_id, tracks_count):
+        """True if this album is fully fetched and looks unchanged since."""
+        recorded = self.albums.get(str(album_id), False)
+        if recorded is False:  # not recorded (None is a valid stored value)
+            return False
+        if recorded is None or tracks_count is None:
+            return True  # nothing to compare against; trust completeness
+        return recorded == tracks_count
+
+    def album_done(self, album_id, tracks_count):
+        """Record an album as fully fetched so it's never re-expanded."""
+        if not self.path:
+            return
+        key = str(album_id)
+        if key in self.albums and self.albums[key] == tracks_count:
+            return
+        self.albums[key] = tracks_count
+        self._save()
+
+    def _save(self):
+        parent = os.path.dirname(self.path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
         tmp = self.path + ".tmp"
         with open(tmp, "w") as f:
-            json.dump({"fetched_track_ids": sorted(self.ids)}, f)
+            json.dump(
+                {
+                    "fetched_track_ids": sorted(self.ids),
+                    "complete_albums": self.albums,
+                },
+                f,
+            )
         os.rename(tmp, self.path)
 
 
@@ -173,7 +227,17 @@ async def main() -> int:
 
         # (album_dir, track) work list — albums plus loose tracks.
         work: list[tuple[str, dict]] = []
+        # (album_id, tracks_count, [track_id]) for albums expanded this run, so
+        # we can mark them complete below once their tracks have all landed.
+        expanded: list[tuple[object, object, list]] = []
+        intact = 0
         for a in albums:
+            # Albums already fully fetched need no `album/get` at all — this is
+            # what keeps the poll loop O(1) rather than O(albums owned).
+            reported = a.get("tracks_count")
+            if watermark.album_is_complete(a["id"], reported):
+                intact += 1
+                continue
             status, full = await api_get(
                 session, "album/get", {"app_id": str(app_id), "album_id": a["id"]}
             )
@@ -183,8 +247,10 @@ async def main() -> int:
                 continue
             artist = sanitize(a.get("artist", {}).get("name", "Unknown Artist"))
             album_dir = os.path.join(dest_root, f"{artist} - {sanitize(a['title'])}")
-            for t in full.get("tracks", {}).get("items", []):
+            items = full.get("tracks", {}).get("items", [])
+            for t in items:
                 work.append((album_dir, t))
+            expanded.append((a["id"], reported, [t["id"] for t in items]))
         for t in loose:
             work.append((os.path.join(dest_root, "Loose Tracks"), t))
 
@@ -208,7 +274,18 @@ async def main() -> int:
             print(f"  ✔ {fname} ({size / 1e6:.1f} MB, {bd}bit/{sr}kHz)")
             fetched += 1
 
-    print(f"\nDone: {fetched} fetched, {skipped} already present, {failed} failed")
+        # Promote fully-landed albums to the album watermark. Only the durable
+        # track watermark counts here — a track skipped merely because it's
+        # still sitting in staging isn't proof it was fetched, so such an album
+        # stays unpromoted and gets expanded again next cycle.
+        for album_id, reported, track_ids in expanded:
+            if track_ids and all(tid in watermark for tid in track_ids):
+                watermark.album_done(album_id, reported)
+
+    done = f"\nDone: {fetched} fetched, {skipped} already present, {failed} failed"
+    if intact:
+        done += f" ({intact} complete album(s) not re-expanded)"
+    print(done)
     return 0 if failed == 0 else 1
 
 

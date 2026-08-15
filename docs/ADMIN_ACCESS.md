@@ -120,6 +120,13 @@ land.
 
 This is the authoritative list. Keep in sync with reality.
 
+> ⚠️ The **Phase 1.5 column is aspirational**, and more so than it looks.
+> MagicDNS names *hosts*, not services — so Headscale alone gives you
+> `coralstack-apps:<port>`, not `home.nuc`. Per-service names need
+> `dns.extra_records` plus a Caddy listener on `tailscale0`, and the `.nuc`
+> suffix would additionally need an internal CA. See
+> [HEADSCALE.md](HEADSCALE.md#magicdns-names-hosts-not-services--the-registry-oversells-this).
+
 | UI | Port | Bind | How to reach (Phase 1) | Phase 1.5 (Headscale) |
 | -- | ---- | ---- | ---------------------- | --------------------- |
 | Proxmox | 8006 | hypervisor NIC | `https://<nuc-lan-ip>:8006` from LAN | `https://proxmox.nuc` |

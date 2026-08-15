@@ -96,6 +96,7 @@ the first "shared admin" pressure.
 | Item | Status | Doc |
 | ---- | ------ | --- |
 | Per-household Ente instances | 📋 specced in memory | TBD — promote [memory](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_multitenancy.md) |
+| Member request portal (Jellyseerr) | 💭 identified, not specced | The *arr UIs conflate **configuring** (indexers, quality profiles, download clients — operator-only) with **requesting** (add a title — any member). That conflation is why "who are the *arr tools for?" feels murky. Answer: they're admin plumbing, and the member-facing tier is a separate request app. Three tiers: Jellyfin = consumption (public), Jellyseerr = requests (public + Pocket ID), *arr + qBittorrent = configuration (admin-plane/tailnet). Only becomes live with a second household — but note it changes the operation's character from "admin acquires for own household" to "co-op runs a request service", which is a deliberate decision, not a technical step |
 | Pocket ID group scoping | 📋 partial in onboarding | [ONBOARDING.md](ONBOARDING.md) (extend) |
 | Forward-auth on Caddy → Pocket ID | 📋 specced | [ADMIN_ACCESS.md](ADMIN_ACCESS.md#phase-2) |
 | Admin agent (lettabot) | 📋 specced in memory | TBD — promote [memory](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_admin_agent.md) to `ADMIN_AGENT.md` |

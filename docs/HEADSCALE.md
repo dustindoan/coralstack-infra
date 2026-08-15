@@ -149,6 +149,48 @@ since it's assigned by Headscale and differs per host). Services needing this:
 | Portainer | 9443 | [services/portainer](../services/portainer/docker-compose.yml) |
 | Admin panel | 9090 | [services/admin-panel](../services/admin-panel/docker-compose.yml) (not yet deployed) |
 
+### MagicDNS names hosts, not services — the registry oversells this
+
+The [registry](ADMIN_ACCESS.md#registry-of-admin-uis)'s "Phase 1.5 (Headscale)"
+column lists `home.nuc`, `sonarr.nuc`, `tv.nuc` and so on. **Those don't come
+free with Headscale.** MagicDNS assigns one name per *host*, so the apps VM gets
+a single name and everything on it stays port-addressed. `proxmox.nuc` and
+`opnsense.fw` are fine — separate machines — but the rest are all the same box.
+
+Two stages, and the first is the one that matters:
+
+| | What you get | Work |
+| - | ------------ | ---- |
+| **A** | `http://coralstack-apps:3000` etc. from any enrolled device | just the tailnet binding above — **this is what kills the 7-forward command** |
+| **B** | `https://home.…` per-service names | + Headscale `dns.extra_records` mapping each name to the tailnet IP, + a Caddy listener on `tailscale0` doing name-based routing |
+
+Do A, live with it, and only do B if the port numbers actually annoy you.
+
+If you do B: **don't use `.nuc`.** It isn't a real domain, so it needs Caddy's
+internal CA and that root installed on every device. Use real subdomains
+instead (e.g. `home.internal.<BASE_DOMAIN>`) pointed at the tailnet IP via
+`extra_records` — the existing Cloudflare DNS-01 setup then issues genuinely
+trusted certs, with no CA distribution and no browser warnings, and the names
+never resolve publicly.
+
+### ExpressVPN on the Mac will fight the Tailscale client
+
+Not a blocker, but it's the one place these collide. ExpressVPN in this stack
+runs *inside* Gluetun containers (`arr-vpn`, `dispatcharr-vpn`), confined to
+those namespaces — it never touches the apps VM's routing table, so the tailnet
+interface there is unaffected.
+
+Your **laptop** is the conflict surface: two VPN clients both want the default
+route and the DNS resolver, and ExpressVPN is aggressive about taking both. The
+symptom is the tailnet silently failing to resolve while ExpressVPN is up. Fix
+is ExpressVPN's split tunnelling, excluding the tailnet range.
+
+(For the record: the move away from tailnet-only was *not* caused by this. It
+was member UX — family shouldn't need a VPN client for Jellyfin — plus
+Tailscale-the-service's external IdP requirement and SaaS control plane. Those
+reasons are why the replacement is self-hosted Headscale, and none of them
+apply to admin-only access.)
+
 ### Homepage follow-up (cheap, do it last)
 
 Once MagicDNS names exist, [services/homepage/config/services.yaml](../services/homepage/config/services.yaml)

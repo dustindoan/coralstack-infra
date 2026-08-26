@@ -14,6 +14,7 @@ include:
   - services/homepage/docker-compose.yml
   - services/open-webui/docker-compose.yml
   - services/uptime-kuma/docker-compose.yml
+  - services/smart/docker-compose.yml
   - services/backup/docker-compose.yml
   - services/ente-janitor/docker-compose.yml
   - services/admin-panel/docker-compose.yml

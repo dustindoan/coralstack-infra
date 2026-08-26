@@ -34,7 +34,9 @@ cp .env.example .env
 
 See [docs/QUICKSTART.md](docs/QUICKSTART.md) for the full first-run walkthrough,
 [docs/ONBOARDING.md](docs/ONBOARDING.md) for the OIDC wiring steps after first boot,
-and [docs/RECOVERY.md](docs/RECOVERY.md) for the power-loss recovery test + runbook.
+[docs/RECOVERY.md](docs/RECOVERY.md) for the power-loss recovery test + runbook,
+and [docs/HARDWARE_FAILURE.md](docs/HARDWARE_FAILURE.md) for diagnosing a failed or
+failing disk/box and rebuilding from backups.
 
 ## Architecture
 

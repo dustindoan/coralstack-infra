@@ -44,7 +44,7 @@ back into this roadmap and into memory for items that don't yet have docs.
 | Jellyfin | ✅ deployed | [ONBOARDING.md](ONBOARDING.md) |
 | Dispatcharr (IPTV → Jellyfin Live TV) | ✅ deployed (admin-plane) | [services/dispatcharr](../services/dispatcharr/docker-compose.yml), [ADMIN_ACCESS.md](ADMIN_ACCESS.md) |
 | Open WebUI | ✅ deployed (Ollama on Mac mini) | [PROXMOX_MIGRATION.md](PROXMOX_MIGRATION.md) Phase 4c |
-| Uptime Kuma (monitoring + public `status.` page) | 🚧 in repo, deploy pending | [services/uptime-kuma](../services/uptime-kuma/docker-compose.yml) — independent status page mitigates the PWA failure-state trap; hosts the backup dead-man's-switch |
+| Uptime Kuma (monitoring + public `status.` page) | ✅ deployed; **monitors + notification channel still to configure** | [MONITORING.md](MONITORING.md) — independent status page mitigates the PWA failure-state trap; hosts the backup + SMART dead-man's-switches. Config lives only in Kuma's SQLite DB (no config-as-code, same limitation that removed Homarr), so the monitor set is a UI checklist |
 | *arr stack (Sonarr/Radarr/Prowlarr/qBittorrent) | ✅ deployed (admin-plane, shared `arr-vpn` Gluetun netns) | [services/arr](../services/arr/docker-compose.yml) — single `${STORAGE_PATH}/media` mount so imports hardlink; indexers are runtime config, not repo state |
 | Portainer (Docker management) | ✅ deployed (admin-plane) | [services/portainer](../services/portainer/docker-compose.yml) — holds `docker.sock`, so strictest gate; a window + break-glass lever, not the source of truth |
 | YouTube archiving (TubeArchivist vs Pinchflat) | 💭 undecided | Neither deployed. Pinchflat fits the stack better (one container, writes NFO into a Jellyfin library) but upstream has been dormant since 2025-12; TubeArchivist is actively maintained but needs Elasticsearch + Redis and wants to be its own frontend |
@@ -64,7 +64,10 @@ back into this roadmap and into memory for items that don't yet have docs.
 | Admin access spec (loopback bind + SSH tunnel) | 🚧 drafting | [ADMIN_ACCESS.md](ADMIN_ACCESS.md) |
 | Ente deletion janitor (bounded purge window) | 🚧 in repo, deploy pending | [ENTE_STORAGE.md](ENTE_STORAGE.md) — shrinks Ente's hard-coded 45-day purge queue to N days, post-backup; caps deleted-photo disk churn |
 | Admin panel (loopback action panel) | 🚧 in repo, deploy pending | [services/admin-panel](../services/admin-panel/docker-compose.yml) — purge-pending gauge + "expedite Ente deletions" action; seed of the Phase 1.5 admin front door |
-| Power-loss recovery | ✅ runbook complete | [RECOVERY.md](RECOVERY.md) |
+| Power-loss recovery | ✅ runbook complete | [RECOVERY.md](RECOVERY.md) — scope is *the hardware is fine*; hardware failure is a separate doc |
+| Hardware-failure diagnosis + rebuild runbook | ✅ written | [HARDWARE_FAILURE.md](HARDWARE_FAILURE.md) — failure domains, SMART triage, per-component runbooks, rebuild-from-nothing, and an honest SPOF table. **Part 0 has two fill-in-on-the-box gaps: the hardware inventory, and confirming which physical disk `DATA_PATH` lives on** |
+| SMART disk monitoring | 🚧 in repo, deploy pending | [services/smart](../services/smart/) — daily attribute check, pushes the finding to Uptime Kuma. Two runners by necessity: a container on the apps VM (TerraMaster) + a systemd timer on the Proxmox host (M.2, invisible from inside the VM) |
+| Alerting: external check on the stack itself | 📋 recipe written, **not yet set up** | [MONITORING.md](MONITORING.md#4-an-external-check--the-one-that-catches-a-dead-box) — Kuma runs on the box it monitors, so a dead NUC produces no alert at all. ~5 minutes of work (hosted free tier, or a cron on any box elsewhere) and it's the weakest link until done. Note the Mac mini can't play this role: its internet path is OPNsense, which runs on the NUC |
 | Secret tiering (Tier 1 paper / Tier 2 vault) | ✅ convention | [ADMIN_ACCESS.md](ADMIN_ACCESS.md#secret-tiers) |
 
 ---

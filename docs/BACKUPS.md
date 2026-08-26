@@ -11,7 +11,8 @@ launch-killing story — so this is the top infrastructure gap.
 > **RAID is not backup.** RAID protects against a drive dying (availability). It
 > does nothing about accidental deletion, filesystem corruption, enclosure
 > death, theft, fire, or ransomware. This document is about *durability*, which
-> is a separate problem.
+> is a separate problem. The other half — diagnosing the drive that is dying
+> and getting back afterwards — is [HARDWARE_FAILURE.md](HARDWARE_FAILURE.md).
 
 ## How it works
 

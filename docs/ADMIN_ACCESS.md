@@ -149,7 +149,7 @@ co-op member click around in this UI?" If no, it goes here.
 ## Secret tiers
 
 Related but orthogonal — secrets used to *log into* the admin plane are tiered.
-From [memory: secret tiering](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_secret_tiering.md):
+From the secret tiering design note:
 
 - **Tier 1** — break-glass: vault master passphrase, infra root credentials,
   Cloudflare API token, Proxmox root. **On paper, in a safe.** Never in

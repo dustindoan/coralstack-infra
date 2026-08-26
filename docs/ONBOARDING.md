@@ -24,7 +24,7 @@ Pocket ID authorizes access to OIDC clients by group membership, so groups must 
 
 In Pocket ID: **Groups** sidebar → create both. Then **Users** → edit your admin user → add to both groups. Future household members just get added to `members` when onboarded.
 
-Per-household groups (`household-1`, `household-2`) become relevant only when you deploy per-household service instances (per [multi-tenancy memory](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_multitenancy.md)). Skip for now.
+Per-household groups (`household-1`, `household-2`) become relevant only when you deploy per-household service instances (per the multi-tenancy design note). Skip for now.
 
 ## 1. Register each OIDC client in Pocket ID
 
@@ -102,7 +102,7 @@ docker compose up -d vaultwarden
 
 Test at `https://vault.${BASE_DOMAIN}` — click **Sign in with SSO** → passkey auth at Pocket ID → redirected back → prompted to set master passphrase (first time only) or enter existing passphrase → vault opens.
 
-**How auth layers work:** SSO authenticates "who you are" to the Vaultwarden server. Master passphrase derives the vault encryption key on your device. They're independent — Pocket ID outage doesn't lock you out (master password fallback stays enabled), and master passphrase compromise doesn't affect SSO identity. See [vaultwarden auth memory](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_vaultwarden_auth.md) for the full model.
+**How auth layers work:** SSO authenticates "who you are" to the Vaultwarden server. Master passphrase derives the vault encryption key on your device. They're independent — Pocket ID outage doesn't lock you out (master password fallback stays enabled), and master passphrase compromise doesn't affect SSO identity. See the Vaultwarden auth design note for the full model.
 
 #### Install Bitwarden clients (self-hosted server URL configuration)
 
@@ -206,7 +206,7 @@ encryption key, independent of SSO identity.
    docker compose logs ente-museum | grep -i ott
    ```
 3. Enter the OTT in the web app, set your encryption recovery code (write it down — Tier 1 paper
-   per [secret tiering](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_secret_tiering.md)),
+   per the secret tiering design note),
    land in the empty photo library.
 4. **Lock down registration** so `photos.${BASE_DOMAIN}` isn't a self-serve account creator for
    the public internet:
@@ -295,9 +295,9 @@ Two credentials, two failure modes, never lose both at once.
 
 **Plus one credential that lives inside Vaultwarden, not in your head:**
 
-- **Ente Photos password** — set during Ente signup, saved to the Vaultwarden vault as soon as it's created. You retrieve it from Vaultwarden whenever you configure Ente on a new device. Ente uses end-to-end encryption with the password as the key-derivation root, so it can't be replaced by SSO without a redesign upstream hasn't engaged with — see [the Ente OIDC memory](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_ente_oidc.md). The model is the same E2EE-key-independent-of-SSO pattern Vaultwarden's own master passphrase already uses.
+- **Ente Photos password** — set during Ente signup, saved to the Vaultwarden vault as soon as it's created. You retrieve it from Vaultwarden whenever you configure Ente on a new device. Ente uses end-to-end encryption with the password as key-derivation root, so it can't be replaced by SSO without a redesign upstream hasn't engaged with — see the Ente OIDC design note. The model is the same E2EE-key-independent-of-SSO pattern Vaultwarden's own master passphrase already uses.
 
-Two paper credentials + Ente-password-in-Vaultwarden. See the [secret tiering memory](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_secret_tiering.md) for the full taxonomy of what lives where.
+Two paper credentials + Ente-password-in-Vaultwarden. See the secret tiering design note for the full taxonomy of what lives where.
 
 ### Where to store the Pocket ID root admin passkey
 

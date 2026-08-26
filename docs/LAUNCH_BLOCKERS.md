@@ -57,7 +57,7 @@ and (b) telling members how to acquire new music going forward.
 ### 3. Backups (basic, present) — ✅ done 2026-07-17; photo restore proven byte-identical from B2
 The pitch is "trust this with your family's photos and passwords." Without offsite
 backups, one disk failure becomes a launch-killing story.
-- **Strategy exists** in [memory: backup strategy](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_backup_strategy.md) (3-2-1, RAID ≠ backup, etc.).
+- **Strategy exists** in the backup strategy design note (3-2-1, RAID ≠ backup, etc.).
 - **Implemented:** [services/backup](../services/backup/) — `restic` + `rclone`,
   scheduled nightly. Consistent DB dumps (Ente `pg_dump`, Vaultwarden + Pocket ID
   SQLite `.backup`) + one whole-tree snapshot of `${DATA_PATH}` and `${STORAGE_PATH}`
@@ -135,9 +135,9 @@ is worse than acknowledgment.
 | **File sync (iCloud Drive) gap** | "Not yet replaced. Recommended: Syncthing or Seafile if you need this, or keep iCloud Drive." |
 | **Hardware-death recovery** | "Power loss is documented (see RECOVERY.md). Full hardware replacement requires backups (gate #3) + fresh host install." |
 | **Single-host SPOF (Phase 1)** | "Phase 1 deployments run router + apps on one machine. Recommended for production: separate firewall hardware (see ROADMAP)." |
-| **Onboarding is high-touch (2-3 hrs per member)** | Acknowledge directly; targeted at communities where this fits the value. See [memory: onboarding UX constraint](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_onboarding_constraint.md). |
-| **PWA failure-state caching** | "During transient outages, your browser may keep showing the failure after the server recovers. Check **status.<domain>** to see whether it's actually back, then restart your browser / try incognito." The `status.<domain>` page (Uptime Kuma) is now in the repo ([services/uptime-kuma](../services/uptime-kuma/docker-compose.yml)) — deploy pending. Background: [memory note](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_pwa_failure_state.md). |
-| **DNS / resilience caveats** | "We've explicitly diverged from common defaults where they bake-in single-failure assumptions. See [resilience pattern](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/feedback_resilience_vs_defaults.md)." |
+| **Onboarding is high-touch (2-3 hrs per member)** | Acknowledge directly; targeted at communities where this fits the value. See the onboarding UX constraint design note. |
+| **PWA failure-state caching** | "During transient outages, your browser may keep showing the failure after server recovers. Check **status.<domain>** to see whether it's actually back, then restart your browser / try incognito." The `status.<domain>` page (Uptime Kuma) is now in the repo ([services/uptime-kuma](../services/uptime-kuma/docker-compose.yml)) — deploy pending. Background: the PWA failure-state design note. |
+| **DNS / resilience caveats** | "We've explicitly diverged from common defaults where they bake-in single-failure assumptions. See the resilience pattern design note." |
 
 ## Open strategic questions
 

@@ -74,7 +74,7 @@ recovery — lives in one public repo you can read before you trust it.
 
 I'll be honest about where it is: **early.** One community runs it today — mine, in
 Campbell River. Joining is still high-touch; a real person sets you up. I'd rather
-tell you that now than have you find out later. The [roadmap](../ROADMAP.md) and the
+tell you that now than have you find out later. The [roadmap](ROADMAP.md) and the
 open blockers are public for the same reason.
 
 ### The part that actually matters

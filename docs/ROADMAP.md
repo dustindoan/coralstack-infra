@@ -8,6 +8,12 @@ This doc is an **index**, not a substance doc. Each work item links to a spec, r
 or open question. If a row says "TBD" in the doc column, the thinking exists (often in
 session memory) but hasn't been written down yet — capture it before you build it.
 
+> **"design note"** anywhere in these docs means the maintainer's working notes on a
+> decision. They are deliberately **not in this repo** — they're session memory, not
+> published artefacts — so they are referred to by name rather than linked. Where a row
+> below says *promote*, the intent is to turn one into a real doc in `docs/`; until then,
+> treat the note as context that exists but that a reader of this repo can't open.
+
 ## Phase framing
 
 Phases describe the **deployment shape**, not a calendar. We move to the next phase
@@ -21,7 +27,7 @@ when friction in the current one demands it — not on a schedule.
 | **3** | Multi-host or productized for re-deploy by other co-ops | Demand from a second co-op, or hardware product opportunity |
 
 Phase 1 trial state is **expendable** — see
-[memory: trial state expendable](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_trial_state_expendable.md).
+the trial-state-expendable design note.
 Don't over-engineer migration paths within Phase 1.
 
 ---
@@ -95,13 +101,13 @@ the first "shared admin" pressure.
 
 | Item | Status | Doc |
 | ---- | ------ | --- |
-| Per-household Ente instances | 📋 specced in memory | TBD — promote [memory](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_multitenancy.md) |
+| Per-household Ente instances | 📋 specced in memory | TBD — promote the multi-tenancy design note |
 | Member request portal (Jellyseerr) | 💭 identified, not specced | The *arr UIs conflate **configuring** (indexers, quality profiles, download clients — operator-only) with **requesting** (add a title — any member). That conflation is why "who are the *arr tools for?" feels murky. Answer: they're admin plumbing, and the member-facing tier is a separate request app. Three tiers: Jellyfin = consumption (public), Jellyseerr = requests (public + Pocket ID), *arr + qBittorrent = configuration (admin-plane/tailnet). Only becomes live with a second household — but note it changes the operation's character from "admin acquires for own household" to "co-op runs a request service", which is a deliberate decision, not a technical step |
 | Pocket ID group scoping | 📋 partial in onboarding | [ONBOARDING.md](ONBOARDING.md) (extend) |
 | Forward-auth on Caddy → Pocket ID | 📋 specced | [ADMIN_ACCESS.md](ADMIN_ACCESS.md#phase-2) |
-| Admin agent (lettabot) | 📋 specced in memory | TBD — promote [memory](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_admin_agent.md) to `ADMIN_AGENT.md` |
-| Onboarding UX simplification | 💭 friction identified | TBD — see [memory](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_onboarding_constraint.md) |
-| Co-op host provisioning model | 📋 specced in memory | TBD — promote [memory](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_provisioning.md) |
+| Admin agent (lettabot) | 📋 specced in memory | TBD — promote the admin agent design note to `ADMIN_AGENT.md` |
+| Onboarding UX simplification | 💭 friction identified | TBD — see the onboarding constraint design note |
+| Co-op host provisioning model | 📋 specced in memory | TBD — promote the provisioning design note |
 
 ---
 
@@ -114,7 +120,7 @@ Mostly speculative today.
 | ---- | ------ | --- |
 | coralstack.org edge services | 💭 vision-stage | TBD |
 | Self-hosted DNS + Handshake TLD | 💭 vision-stage | TBD |
-| Install simplicity target (5 answers / 30 min) | 💭 north star | TBD — see [memory](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_install_simplicity_target.md) |
+| Install simplicity target (5 answers / 30 min) | 💭 north star | TBD — see the install simplicity target design note |
 | Fleet release tags (hosts track `coralstack vX.Y.Z`, not `main`) | 💭 vision-stage | [DEPLOY_ARCHITECTURE.md](DEPLOY_ARCHITECTURE.md#5-the-release-concept--for-the-fleet-not-this-box) — `deploy(<tag>)` + a promote step, on the same primitive |
 | Hardware product (HA-Green analogue) | 💭 vision-stage | TBD |
 
@@ -127,15 +133,15 @@ Work that doesn't belong to a single phase.
 ### Upstream contributions (spinoffs)
 | Item | Status | Where |
 | ---- | ------ | ----- |
-| Vaultwarden Key Connector (standalone) | 📋 future spinoff repo | [memory](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_key_connector_architecture.md) |
+| Vaultwarden Key Connector (standalone) | 📋 future spinoff repo | the key connector architecture design note |
 | Ente CLI (`ente list`) | 🚧 dustindoan/ente fork | see [Related projects](#related-projects) |
 
 ### Positioning / strategy
 | Item | Where |
 | ---- | ----- |
-| "Why not Nextcloud" framing | [memory](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_nextcloud_comparison.md) — promote to README FAQ when site copy lands |
-| Open Home Foundation as reference / partner | [memory](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_open_home_foundation_reference.md) |
-| Residential fibre / member-deployment tiers | [memory](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_residential_fibre_capability.md) |
+| "Why not Nextcloud" framing | the Nextcloud comparison design note — promote to README FAQ when site copy lands |
+| Open Home Foundation as reference / partner | the Open Home Foundation design note |
+| Residential fibre / member-deployment tiers | the residential fibre capability design note |
 
 ---
 

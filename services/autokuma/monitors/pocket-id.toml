@@ -1,0 +1,6 @@
+type = "http"
+name = "Pocket ID"
+url = "http://pocket-id:1411"
+interval = 60
+max_retries = 2
+accepted_statuscodes = ["200-399"]

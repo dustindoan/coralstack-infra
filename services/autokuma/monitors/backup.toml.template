@@ -1,0 +1,12 @@
+# Dead-man's-switch for the nightly backup. Alerts on SILENCE, which is the
+# failure mode an HTTP check structurally cannot catch: a backup that quietly
+# stops running looks exactly like a healthy system.
+#
+# 172800s = 2 days. The backup runs at 03:15 daily, so this tolerates exactly
+# one missed run before alerting — long enough not to cry wolf over a single
+# slow night, short enough that two consecutive failures are not silent.
+type = "push"
+name = "Nightly backup"
+push_token = "${BACKUP_PUSH_TOKEN}"
+interval = 172800
+max_retries = 0

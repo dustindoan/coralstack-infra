@@ -1,0 +1,10 @@
+# Deliberately the PUBLIC url, not a container name: this is the only monitor
+# that exercises the whole chain — DNS, the eero forward, OPNsense NAT, Caddy,
+# and TLS. Expect it to be the noisy one; it fails for reasons outside the box.
+# Longer retry budget so a transient ISP blip isn't an incident.
+type = "http"
+name = "Edge (public TLS)"
+url = "https://id.${BASE_DOMAIN}"
+interval = 120
+max_retries = 3
+accepted_statuscodes = ["200-399"]

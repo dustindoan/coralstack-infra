@@ -1,0 +1,5 @@
+type = "http"
+name = "Vaultwarden"
+url = "http://vaultwarden:80/alive"
+interval = 60
+max_retries = 2

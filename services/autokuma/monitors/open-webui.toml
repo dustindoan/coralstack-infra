@@ -1,0 +1,6 @@
+type = "http"
+name = "Open WebUI"
+url = "http://open-webui:8080"
+interval = 60
+max_retries = 2
+accepted_statuscodes = ["200-399"]

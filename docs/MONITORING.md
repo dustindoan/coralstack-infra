@@ -31,8 +31,11 @@ config-as-code path for it**. That's the same limitation that got Homarr
 removed from the stack (see the dashboard row in [ROADMAP.md](ROADMAP.md)), and
 it's why this section is a checklist to work through in the UI rather than a
 file to deploy.
-Anything you change here is captured only by the nightly backup of
-`${DATA_PATH}/uptime-kuma`.
+That makes this database the **only** source of truth for the config you're
+about to build, which is why the nightly backup dumps it through SQLite's online
+`.backup` API rather than relying on a raw copy of the data directory — Kuma
+runs in WAL mode, where a plain file copy can miss committed transactions. Do
+the setup once; the backup is what stops you doing it twice.
 
 ### 1. A notification channel — do this first
 

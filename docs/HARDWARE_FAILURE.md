@@ -335,9 +335,11 @@ Say this out loud once so it isn't a discovery during an incident.
   it is `BACKUP_EXCLUDES`, and the cost is pushing TBs to metered cloud.
 - **Anything since the last nightly run.** The backup is at 03:15. Worst case
   is ~24 hours of photos.
-- **Uptime Kuma's monitor configuration**, if `DATA_PATH` is lost *and* the
-  restore misses it — it lives only in Kuma's SQLite DB with no config-as-code
-  path. Rebuilding it is [MONITORING.md](MONITORING.md)'s checklist.
+- **Uptime Kuma's monitor configuration**, but only if the restore itself
+  fails — the nightly backup dumps its SQLite DB explicitly, so a normal
+  restore brings it back. Worth knowing it has no config-as-code path, so if
+  the dump were ever missing, rebuilding means re-walking
+  [MONITORING.md](MONITORING.md)'s checklist by hand.
 - **Anything a member deleted more than the retention window ago.** Retention
   is 7 daily / 4 weekly / 6 monthly on `data`, 7/4/0 on `storage`.
 

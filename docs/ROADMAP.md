@@ -88,6 +88,7 @@ again" makes backups non-negotiable.
 | Service update strategy (pin tags → Renovate → agent) | ✅ detection live | [APP_UPDATES.md](APP_UPDATES.md) — all tags pinned, Renovate app installed + opening bump PRs (2026-07-17); lettabot triage layered later |
 | Deploy primitive + admin-panel Deploy button (`main` → box) | 💭 specced, buildable | [DEPLOY_ARCHITECTURE.md](DEPLOY_ARCHITECTURE.md) — idempotent snapshot→apply→health-gate→rollback; three triggers (CLI/panel/agent); pull-only; closes the *merged-but-not-deployed* gap |
 | Observability (Grafana/Loki) | 💭 not specced | TBD |
+| Uptime Kuma config-as-code | ❌ **investigated 2026-08-25 — don't build yet** | Kuma's REST API is read-only; every write goes over an internal, unversioned Socket.IO protocol. The mainstream wrapper ([lucasheld/uptime-kuma-api](https://github.com/lucasheld/uptime-kuma-api)) supports only Kuma 1.21–1.23; the one 2.x fork ([exaland/uptime-kuma-api-v2](https://github.com/exaland/uptime-kuma-api-v2), 11 stars) targets **2.0.0-beta.2** while we run 2.4.0, and has no method for the first-admin setup wizard. Upstream's REST-write request ([#7151](https://github.com/louislam/uptime-kuma/issues/7151)) was closed unscheduled. Verdict: a ~20-minute one-time UI task isn't worth a fragile dependency in the system that tells you when things break — and every Kuma bump would risk breaking it. **The durable substitute is the backup**, which now dumps Kuma's SQLite explicitly. Revisit at Phase 3, and prefer seeding a template `kuma.db` over driving Socket.IO |
 
 ---
 

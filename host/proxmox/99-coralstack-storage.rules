@@ -1,0 +1,15 @@
+# Install on the PROXMOX HOST (coralstack-nuc) as
+#   /etc/udev/rules.d/99-coralstack-storage.rules
+# then: udevadm control --reload-rules && udevadm trigger --subsystem-match=usb --action=add
+#
+# Both TerraMaster enclosure hubs ship with power/control=auto and
+# autosuspend_delay_ms=0 -- they may power-manage themselves out from under the
+# attached array. A hub suspending under active storage is a well-known cause of
+# drops that only a physical power cycle clears. Pin all three to control=on.
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="0bda", ATTR{idProduct}=="5423", TEST=="power/control", ATTR{power/control}="on"
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="0bda", ATTR{idProduct}=="0423", TEST=="power/control", ATTR{power/control}="on"
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="174c", ATTR{idProduct}=="235c", TEST=="power/control", ATTR{power/control}="on"
+
+# Capture forensics the moment the array leaves the bus. systemd-run --no-block
+# so udev is never blocked by the capture.
+ACTION=="remove", SUBSYSTEM=="usb", ENV{PRODUCT}=="174c/235c/*", RUN+="/usr/bin/systemd-run --no-block /usr/local/bin/coralstack-usb-drop-capture"

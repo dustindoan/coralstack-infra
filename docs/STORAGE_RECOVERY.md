@@ -33,11 +33,11 @@ Bus 001 (480M) - Port 003: TerraMaster 4-Port USB 2.0 Hub
 Bus 002 (5000M SuperSpeed) - empty
 ```
 
-An 8TB spinning array on a 480 Mbps link through a hub, driven by an ASMedia
-bridge under UAS, is a well-known dropout profile -- and it caps throughput at
-roughly 40 MB/s. **Fix the physical link first:** use a USB 3 cable into a
-SuperSpeed port on the NUC and confirm the device lands on Bus 002 at 5000M.
-Everything below only limits the blast radius; it does not stop the drop.
+That 480 Mbps link was **deliberate**, not an accident: the array had
+previously been on USB 3 and would drop intermittently and not come back, so it
+was moved down to USB 2.0 as a mitigation. The journal shows that trade worked
+-- see "USB link history" below. It capped throughput at roughly 40 MB/s, and
+it did not make the array immune: 2026-08-28 was a drop on the 2.0 link.
 
 As a software mitigation, UAS is disabled for this specific device via
 `usb-storage.quirks=174c:235c:u` on the `apps` VM kernel cmdline. UAS on a
@@ -145,3 +145,54 @@ docker inspect jellyfin --format "{{json .Config.Healthcheck.Test}}"
 This bit during the 2026-08-28 recovery: the data-aware healthcheck was
 committed and the container reported healthy for several minutes, but the
 deployed check was still the stock HTTP-only one.
+
+## USB link history, and why we are on USB 3 again
+
+The array had been moved to a USB 2.0 cable deliberately, because on USB 3 it
+would drop intermittently and not return. The host journal (persistent, back to
+May 2026) shows that mitigation genuinely worked:
+
+```
+boot -4, 2026-06-23 -> 2026-08-28 (66 days, USB 2.0):
+  array (174c:235c) enumerations: 1 on 2026-06-23, none until 2026-08-28
+  USB disconnect/reset events:    1 on 2026-06-23, then 111 -- all on 2026-08-28
+```
+
+Sixty-six days with a single clean enumeration and no drops. Every error in that
+window belongs to the 2026-08-28 failure and the power-cycling that followed.
+USB 2.0 was not immunity, but it was materially stable.
+
+We are back on USB 3 (10 Gbps, SuperSpeed Plus Gen 2x1) because **two causes
+that were present during the earlier USB 3 trials have since been removed**:
+
+1. **UAS.** Disabled for this device via `usb-storage.quirks=174c:235c:u`. The
+   `uas_zap_pending` / `DID_NO_CONNECT` signature in the 2026-08-28 logs is the
+   textbook ASMedia UAS failure, and disabling UAS is the standard remedy for
+   "drops and does not come back". The earlier USB 3 attempts ran with UAS on.
+2. **Hub autosuspend.** Both enclosure hubs shipped with `power/control=auto`
+   and `autosuspend_delay_ms=0`. Now pinned to `on` by
+   `host/proxmox/99-coralstack-storage.rules`.
+
+Neither had been addressed before, so USB 3 today is not the configuration that
+failed previously. This is a reasoned bet, not a guarantee.
+
+### Decision rule
+
+**One unexplained drop within 14 days of 2026-08-28 and we revert to USB 2.0**,
+keeping both mitigations (a combination never yet tried). Do not spend a second
+evening re-diagnosing this: the forensics will already be captured.
+
+### Revert procedure
+
+1. Swap back to the USB 2.0 cable, or move to a non-SuperSpeed port.
+2. Confirm the downgrade: `ssh proxmox "lsusb -t | grep -i mass"` should show
+   `480M` rather than `10000M`.
+3. Nothing else changes. The quirk, the udev rules, the mount ordering, the
+   sentinel and the healthcheck are all link-speed independent.
+
+### Where the evidence lands next time
+
+A drop now fires `/usr/local/bin/coralstack-usb-drop-capture` via udev, writing
+`lsusb -t`, the enclosure power state, and 300 lines of kernel log to
+`/var/log/coralstack-usb-drops/drop-<timestamp>.log` on the Proxmox host, plus a
+syslog line tagged `coralstack-usb`. Check there first.

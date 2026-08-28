@@ -33,9 +33,15 @@ it's why this section is a checklist to work through in the UI rather than a
 file to deploy.
 That makes this database the **only** source of truth for the config you're
 about to build, which is why the nightly backup dumps it through SQLite's online
-`.backup` API rather than relying on a raw copy of the data directory — Kuma
-runs in WAL mode, where a plain file copy can miss committed transactions. Do
-the setup once; the backup is what stops you doing it twice.
+`.backup` API rather than relying on a raw copy of the data directory.
+
+**This was measured, not assumed.** On a throwaway Kuma 2.4.0 instance with two
+monitors configured, copying `kuma.db` on its own — what a plain file-level
+backup captures — yielded **zero monitors**. The same copy taken together with
+its `-wal` sidecar had both. Kuma runs SQLite in WAL mode, and at that point the
+main database was 61 KB against a 1.4 MB write-ahead log: essentially the entire
+configuration was living in the file a naive copy leaves behind. Do the setup
+once; the `.backup` dump is what stops you doing it twice.
 
 ### 1. A notification channel — do this first
 

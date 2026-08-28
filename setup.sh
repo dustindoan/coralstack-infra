@@ -462,4 +462,29 @@ Next steps:
   3. Wire OIDC into Jellyfin and Open WebUI, then onboard the first Ente user — see docs/ONBOARDING.md.
      (Ente Photos has no native OIDC; members onboard via email-OTT and store
      their Ente password in their Pocket-ID-SSO'd Vaultwarden vault.)
+
+  4. Monitoring — see docs/MONITORING.md:
+     a. Claim the Uptime Kuma admin account at https://status.${BASE_DOMAIN} IMMEDIATELY.
+        Until you do, its setup wizard is open to whoever finds it (docs/SECURITY_PASS.md, SEC-2).
+     b. Put that password in services/autokuma/.env as AUTOKUMA__KUMA__PASSWORD,
+        then: docker compose up -d autokuma
+        (Until it's set, autokuma can't log in and no monitors get created.)
+     c. Create a notification channel in Kuma and press its Test button.
+        This step is manual on purpose, and nothing else alerts without it.
 EOF
+
+# The Proxmox host runs the SMART check outside this compose, so its push URL
+# can't be written to a file from here. Surface it rather than making the admin
+# go digging in services/autokuma/.env for a value they don't know exists.
+if [[ -n "${SMART_HOST_PUSH_TOKEN:-}" ]]; then
+	cat <<EOF
+
+  5. On the PROXMOX HOST (not this VM), run services/smart/host/install.sh and set
+     HEALTHCHECK_URL in /etc/coralstack/smart.env to:
+
+       https://status.${BASE_DOMAIN}/api/push/${SMART_HOST_PUSH_TOKEN}
+
+     The public URL, not the container name — the host isn't on the coralstack
+     docker network, so it hairpins back through the eero.
+EOF
+fi

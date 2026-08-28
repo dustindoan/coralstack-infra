@@ -124,3 +124,24 @@ ssh coralstack-apps "test -f /mnt/storage/.coralstack-mounted && echo sentinel O
 ssh coralstack-apps "docker ps --filter name=jellyfin --format \"{{.Status}}\""
 ssh coralstack-apps "cat /proc/cmdline | grep -o \"usb-storage.quirks=[^ ]*\""
 ```
+
+## Gotcha: compose edits are not deployed by a reboot
+
+`restart: unless-stopped` restarts the **existing container definition**. It does
+not re-read `docker-compose.yml`. A reboot therefore brings back the *old*
+config, and `docker ps` will happily report `healthy` using the *old*
+healthcheck. After changing any compose file you must explicitly run:
+
+```
+docker compose up -d <service>     # recreates with the new definition
+```
+
+Verify what is actually deployed rather than what is committed:
+
+```
+docker inspect jellyfin --format "{{json .Config.Healthcheck.Test}}"
+```
+
+This bit during the 2026-08-28 recovery: the data-aware healthcheck was
+committed and the container reported healthy for several minutes, but the
+deployed check was still the stock HTTP-only one.

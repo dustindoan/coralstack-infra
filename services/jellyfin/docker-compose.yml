@@ -34,3 +34,20 @@ services:
       # "until something actually manages them" condition.)
       - ${STORAGE_PATH}/media/movies:/media/movies:ro
       - ${STORAGE_PATH}/media/shows:/media/shows:ro
+
+    # The stock image healthcheck only probes the HTTP endpoint, so it reports
+    # healthy even when the library is empty. A bind mount resolves ONCE, at
+    # container start, and never re-resolves: if dockerd wins the race against
+    # mnt-storage.mount, this container is pinned to an empty directory on the
+    # root filesystem for its entire life. That happened on 2026-08-28 -- the
+    # array enumerated 9s after dockerd, Jellyfin reported healthy, and served
+    # nothing. Check the DATA as well as the port so the failure is loud.
+    # Ordering fix this backstops: host/docker-wait-for-storage.conf
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl --noproxy localhost -Lk -fsS http://localhost:8096/health >/dev/null && ls -A /media/music | grep -q .
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 120s

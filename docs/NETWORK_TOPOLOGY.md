@@ -40,6 +40,32 @@ services via public DNS → **eero hairpin NAT**.
    "allow from internet" whenever a path exists. This is why split-horizon
    DNS served from OPNsense's WAN side is **permanently off the table** in
    this topology.
+3. **The eero blocks two separate paths a MacBook would need to use in-lab
+   DNS** (2026-05-08). Independent of the trust argument in #2 — these are
+   mechanical, and each was confirmed before being worked around:
+   - **Unicast frames to the OPNsense WAN MAC are silently dropped.** ARP
+     resolves fine (the MacBook learns the `192.168.4.20` MAC), but unicast
+     IP frames from WiFi clients to that MAC never arrive — confirmed with
+     `tcpdump -i <nic0> host 192.168.4.20` on Proxmox showing nothing. Best
+     guess: an eero anti-spoof / "unfamiliar device" filter reacting to the
+     Proxmox VirtIO MAC OUI (`bc:24:11:…`) appearing on a wired path that
+     never originates WiFi probes.
+   - **Outbound `:53` from WiFi clients is intercepted regardless of
+     destination IP.** With dnsmasq answering on Proxmox at
+     `192.168.4.10:53`, `nc -vz 192.168.4.10 22` succeeded from the MacBook
+     while `:53` to the same host was eaten. The eero enforces its own DNS
+     path, presumably for its ad-blocking / family-filtering features.
+
+   Tried and reverted, so nobody repeats them: a WAN firewall rule allowing
+   `192.168.4.0/24 → 192.168.4.20:53` (rule was correct — Proxmox at `.4.10`
+   could query through it, the MacBook at `.4.178` could not, per the first
+   bullet); a dnsmasq forwarder on Proxmox (worked locally, unreachable from
+   the MacBook per the second); and port-shifting dnsmasq to `:5354`, which
+   would have dodged the interception via a macOS `/etc/resolver/` `port`
+   directive but is eero-firmware-dependent and doesn't generalize past one
+   device. SSH aliases sidestep both problems — alias resolution is local to
+   the MacBook, and ProxyJump traffic is port 22, which the eero passes
+   normally.
 
 ## Target ("product") topology: box as LAN peer
 
@@ -87,7 +113,12 @@ min downtime, clean rollback):
 4. Household DNS container on the Apps VM (wildcard override + upstream
    forward); eero custom DNS → Apps VM, secondary 1.1.1.1. SEC-1-safe here:
    resolver and clients share a segment, no NAT boundary, not
-   internet-reachable.
+   internet-reachable. **Verify this step early** — consequence #3 above is
+   the eero intercepting client `:53` regardless of destination. Setting the
+   eero's *own* custom-DNS field is the supported path and should be exempt,
+   but that is an assumption, not something measured. Confirm a WiFi client
+   actually resolves via the Apps VM (`dig` a wildcard-override name, check
+   the resolver's query log) before the rest of the migration depends on it.
 5. Mac mini re-homed from OPT1 to the house LAN; update `OLLAMA_HOST`.
 6. Bookkeeping: SSH config, RECOVERY/ADMIN_ACCESS/PROXMOX_MIGRATION docs.
    OPNsense VM parked powered-off (it is the fork-A option, not deleted).

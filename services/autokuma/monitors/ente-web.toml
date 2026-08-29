@@ -1,0 +1,6 @@
+type = "http"
+name = "Ente (web)"
+url = "http://ente-web:3000"
+interval = 60
+max_retries = 2
+accepted_statuscodes = ["200-399"]

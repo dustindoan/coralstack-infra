@@ -18,6 +18,7 @@ lands) · [RECOVERY.md](RECOVERY.md) (power loss) · [BACKUPS.md](BACKUPS.md).
 | **Backup dead-man's-switch** | `services/backup/backup.sh` | That the nightly backup actually completed | Pushes to a Kuma **Push** monitor on success; silence = alert |
 | **SMART (apps VM)** | `services/smart/` container | The TerraMaster — the disk with the photo blobs | Pushes up/down **with the reason** to a Kuma Push monitor |
 | **SMART (Proxmox host)** | `services/smart/host/`, systemd timer | The NUC's M.2 — Proxmox + both VMs' disks | Same, via the public `status.` URL |
+| **AutoKuma** | `services/autokuma/` | Nothing — it *declares* the monitor set, reconciling Kuma against `.toml` files in this repo | n/a |
 
 Two SMART runners is not redundancy, it's coverage: **the apps VM physically
 cannot see the M.2.** From inside the VM that disk is a virtio device with no
@@ -56,61 +57,68 @@ it on every monitor you create below.
 Test it with Kuma's own Test button before trusting it. An untested
 notification channel is the same as no notification channel.
 
-### 2. Service monitors
+**This step stays manual on purpose.** AutoKuma can define notifications, but
+its own docs mark that support **experimental and subject to change** — and
+this is the one piece of config whose silent breakage means every other alert
+goes nowhere. Monitors are declarative; the channel that carries them is worth
+clicking once and testing.
 
-**Add New Monitor → HTTP(s)** for each. Use the internal container address
-where one exists — it isolates "the service is down" from "the internet is
-down", which are very different 3am problems.
+### 2 & 3. The monitors — declared in this repo, not clicked
 
-| Name | Type | Target |
-| ---- | ---- | ------ |
-| Pocket ID | HTTP(s) | `http://pocket-id:1411` |
-| Vaultwarden | HTTP(s) | `http://vaultwarden:80/alive` |
-| Ente (museum API) | HTTP(s) | `http://ente-museum:8080/ping` |
-| Ente (web) | HTTP(s) | `http://ente-web:3000` |
-| Jellyfin | HTTP(s) | `http://jellyfin:8096/health` |
-| Open WebUI | HTTP(s) | `http://open-webui:8080` |
-| Caddy / public edge | HTTP(s) | `https://id.${BASE_DOMAIN}` |
+**These are config-as-code.** [services/autokuma/monitors/](../services/autokuma/monitors/)
+holds the monitor set as `.toml` files; the `autokuma` service reconciles Kuma
+against them. You do not create these by hand, and you do not re-create them
+after a rebuild — AutoKuma puts them back.
 
-The last one is deliberately the *public* URL: it's the only monitor that
-exercises the whole chain (DNS → eero forward → OPNsense NAT → Caddy → TLS).
-Expect it to be the noisy one, because it fails for reasons outside the box.
+| Monitor | Type | Target |
+| ------- | ---- | ------ |
+| Pocket ID | HTTP | `http://pocket-id:1411` |
+| Vaultwarden | HTTP | `http://vaultwarden:80/alive` |
+| Ente (museum API) | HTTP | `http://ente-museum:8080/ping` |
+| Ente (web) | HTTP | `http://ente-web:3000` |
+| Jellyfin | HTTP | `http://jellyfin:8096/health` |
+| Open WebUI | HTTP | `http://open-webui:8080` |
+| Edge (public TLS) | HTTP | `https://id.${BASE_DOMAIN}` — the only one exercising DNS → eero → OPNsense → Caddy → TLS, so also the noisiest |
+| Nightly backup | Push | dead-man's-switch |
+| SMART (apps VM) | Push | dead-man's-switch |
+| SMART (Proxmox host) | Push | dead-man's-switch |
 
-> Pocket ID and Ente-web answer on `/` with a redirect or a 200 — set the
-> accepted status codes to `200-399` rather than fighting it.
+To change the monitor set, edit a file and redeploy. To add one, drop in a new
+`.toml`. **Keep filenames stable** — the filename is AutoKuma's ID for the
+monitor, so renaming a file orphans the old monitor and creates a new one.
 
-### 3. Push monitors (the dead-man's-switches)
+#### The push tokens are pinned, which removes the copy-paste step
 
-These are the important ones. A push monitor alerts on **silence**, which is
-the failure mode that HTTP checks structurally cannot catch: the nightly backup
-silently not running looks exactly like a healthy system.
+Push monitors normally mean: create the monitor in the UI, copy the token Kuma
+generated, paste it into a config file. AutoKuma can **pin** the token instead,
+so `setup.sh` generates it first and wires both ends — the monitor definition
+*and* `HEALTHCHECK_URL` in [services/backup/.env](../services/backup/.env.example)
+and [services/smart/.env](../services/smart/.env.example). Nothing to copy.
 
-**Add New Monitor → Monitor Type: Push** for each, then paste the generated
-Push URL into the matching config file on the box.
+Two things to know:
 
-| Name | Heartbeat interval | Paste the URL into | Why that interval |
-| ---- | ------------------ | ------------------ | ----------------- |
-| Nightly backup | `172800` (2 days) | `services/backup/.env` → `HEALTHCHECK_URL` | Backup runs 03:15 daily; two days tolerates one skipped run without crying wolf |
-| SMART (apps VM) | `172800` (2 days) | `services/smart/.env` → `HEALTHCHECK_URL` | Check runs 06:20 daily |
-| SMART (Proxmox host) | `172800` (2 days) | `/etc/coralstack/smart.env` → `HEALTHCHECK_URL` | Check runs 06:50 daily |
+- The token format is enforced: **exactly 32 characters, letters and digits**.
+  A malformed one is not a loud failure — AutoKuma skips the monitor and logs a
+  `WARN` each sync cycle, so it just never appears. If a push monitor is
+  missing, read `docker logs autokuma` before anything else.
+- Tokens are **secrets**. Anyone holding one can post a fake "all is well"
+  heartbeat and keep a monitor green while the real job fails. That's why the
+  push definitions are `.toml.template` files rendered on the box, and why
+  nothing rendered is ever committed.
+- `setup.sh` fills `HEALTHCHECK_URL` only when it is **blank**. If you've
+  pointed one at healthchecks.io or elsewhere deliberately, it says so and
+  leaves it alone rather than overwriting your choice.
 
-The container-side URLs can use the internal name
-(`http://uptime-kuma:3001/api/push/<token>`). **The Proxmox host cannot** — it
-isn't on the coralstack docker network — so it must use
-`https://status.${BASE_DOMAIN}/api/push/<token>`, which hairpins back through
-eero.
+#### ⚠️ AutoKuma's `/data` volume is load-bearing
 
-Then restart the affected services so they pick up the new value:
-
-```bash
-docker compose up -d backup smart
-```
-
-The SMART checks don't only heartbeat — they push `status=down` **with the
-finding text** the moment a drive reports a problem, so you get "8 pending
-sectors on /dev/sdb" rather than a bare "monitor is down". Both mechanisms are
-live at once: a finding alerts immediately, and a runner that dies entirely
-alerts when its heartbeat lapses.
+AutoKuma remembers which Kuma monitor belongs to which definition in
+`/data/autokuma.db`, and **the image declares no volume of its own**. Without
+the persistent mount in
+[its compose file](../services/autokuma/docker-compose.yml), every `compose up`
+that recreates the container forgets those mappings and creates a **second copy
+of every monitor**. Measured: the count went 3 → 5 on one recreation, then held
+at 5 across two more once `/data` persisted. Duplicates don't self-heal —
+AutoKuma only manages what it remembers — so orphans must be deleted by hand.
 
 ### 4. An external check — the one that catches a dead box
 

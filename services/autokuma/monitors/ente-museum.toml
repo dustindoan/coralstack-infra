@@ -1,0 +1,5 @@
+type = "http"
+name = "Ente (museum API)"
+url = "http://ente-museum:8080/ping"
+interval = 60
+max_retries = 2

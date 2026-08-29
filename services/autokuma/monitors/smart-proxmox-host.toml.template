@@ -1,0 +1,9 @@
+# SMART check on the Proxmox host — the NUC's M.2, which the apps VM cannot
+# see (from inside the VM it's a virtio device with no SMART behind it).
+# This one posts via the PUBLIC status URL: the host isn't on the coralstack
+# docker network.
+type = "push"
+name = "SMART (Proxmox host)"
+push_token = "${SMART_HOST_PUSH_TOKEN}"
+interval = 172800
+max_retries = 0

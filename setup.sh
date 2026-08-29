@@ -186,6 +186,8 @@ init_service_env dispatcharr
 init_service_env homepage
 init_service_env jellyfin
 init_service_env backup
+init_service_env smart
+init_service_env autokuma
 
 fill_secret services/pocket-id/.env   ENCRYPTION_KEY      "$(gen_hex)"
 fill_secret services/vaultwarden/.env ADMIN_TOKEN         "$(gen_base64)"
@@ -196,6 +198,88 @@ fill_secret services/open-webui/.env  WEBUI_SECRET_KEY      "$(gen_hex)"
 # in that file stay blank — they're per-install and optional (a blank key just
 # means a link + status dot instead of a live widget).
 [[ -f services/homepage/.env ]] && set_value services/homepage/.env HOMEPAGE_VAR_BASE_DOMAIN "$BASE_DOMAIN"
+
+# ─── AutoKuma: monitoring config as code ─────────────────────────────────────
+# Uptime Kuma stores its monitor set only in its own DB and v2 removed the JSON
+# export/import, so AutoKuma reconciles it from declarative files instead.
+#
+# Push tokens are generated HERE rather than copied out of Kuma's UI, because
+# AutoKuma can pin them. That inverts the usual dance — instead of "create the
+# monitor, copy its generated token, paste it into the .env", the token is
+# known first and both ends are wired from it. AutoKuma enforces exactly 32
+# alphanumeric characters; `openssl rand -hex 16` fits, and a malformed token
+# is NOT a loud failure (the monitor is skipped with a WARN each sync cycle),
+# so don't hand-edit these into something shorter.
+gen_push_token() { openssl rand -hex 16; }
+
+if [[ -f services/autokuma/.env ]]; then
+	fill_secret services/autokuma/.env BACKUP_PUSH_TOKEN     "$(gen_push_token)"
+	fill_secret services/autokuma/.env SMART_APPS_PUSH_TOKEN "$(gen_push_token)"
+	fill_secret services/autokuma/.env SMART_HOST_PUSH_TOKEN "$(gen_push_token)"
+
+	# shellcheck disable=SC1091
+	set -a; source services/autokuma/.env; set +a
+
+	# Wire the SAME tokens into the services that post the heartbeats. The
+	# container-side ones use Kuma's internal name; the Proxmox host is not on
+	# the coralstack docker network, so its URL has to be the public one (it
+	# hairpins back through eero) and is printed at the end for the host
+	# installer rather than written to a file here.
+	# Fill only when blank, and say something when it differs. HEALTHCHECK_URL
+	# is deliberately pluggable (healthchecks.io, a co-op member's box — see
+	# services/backup/.env.example), so an admin who pointed it somewhere on
+	# purpose must not have it silently rewritten on the next setup.sh run.
+	wire_healthcheck() {
+		local file="$1" token="$2" label="$3"
+		[[ -f "$file" && -n "$token" ]] || return 0
+		local want="http://uptime-kuma:3001/api/push/${token}"
+		local have
+		have="$(grep -E '^HEALTHCHECK_URL=' "$file" | head -1 | cut -d= -f2-)"
+		if [[ -z "$have" ]]; then
+			set_value "$file" HEALTHCHECK_URL "$want"
+			log "Wired $label dead-man's-switch → Uptime Kuma push monitor"
+		elif [[ "$have" != "$want" ]]; then
+			warn "$file already has a HEALTHCHECK_URL pointing elsewhere — leaving it alone."
+			warn "    To use the AutoKuma-managed monitor instead, set it to: $want"
+		fi
+	}
+	wire_healthcheck services/backup/.env "${BACKUP_PUSH_TOKEN:-}"     "backup"
+	wire_healthcheck services/smart/.env  "${SMART_APPS_PUSH_TOKEN:-}" "SMART (apps VM)"
+
+	# Render the monitor definitions into the directory AutoKuma mounts.
+	# Plain .toml files are copied; .toml.template files get substituted.
+	# Re-rendered on every run so edits to the repo's definitions actually
+	# reach the box — these are declarative and owned by the repo, unlike
+	# ente/museum.yaml which carries runtime state and is rendered once.
+	autokuma_out="$DATA_PATH/autokuma/monitors"
+	mkdir -p "$autokuma_out" "$DATA_PATH/autokuma/data"
+	rendered=0
+	for f in services/autokuma/monitors/*.toml; do
+		[[ -e "$f" ]] || continue
+		cp "$f" "$autokuma_out/$(basename "$f")"
+		rendered=$((rendered + 1))
+	done
+	for f in services/autokuma/monitors/*.toml.template; do
+		[[ -e "$f" ]] || continue
+		out="$autokuma_out/$(basename "$f" .template)"
+		envsubst '$BASE_DOMAIN $BACKUP_PUSH_TOKEN $SMART_APPS_PUSH_TOKEN $SMART_HOST_PUSH_TOKEN' \
+			< "$f" > "$out"
+		rendered=$((rendered + 1))
+	done
+	log "Rendered $rendered AutoKuma monitor definition(s) to $autokuma_out"
+
+	# Stale definitions: a monitor file deleted from the repo leaves its
+	# rendered copy behind, and AutoKuma keeps reconciling it forever. Flag
+	# rather than auto-delete — silently removing monitoring is worse.
+	for f in "$autokuma_out"/*.toml; do
+		[[ -e "$f" ]] || continue
+		b="$(basename "$f")"
+		if [[ ! -f "services/autokuma/monitors/$b" && ! -f "services/autokuma/monitors/$b.template" ]]; then
+			warn "Stale monitor definition: $f has no source in services/autokuma/monitors/."
+			warn "    If you removed it deliberately, delete this file AND the monitor in Kuma's UI."
+		fi
+	done
+fi
 
 # Restic repo password is a TIER-1 secret: lose it and every backup is
 # unrecoverable. Warn loudly the first time we generate one so the admin
@@ -378,4 +462,29 @@ Next steps:
   3. Wire OIDC into Jellyfin and Open WebUI, then onboard the first Ente user — see docs/ONBOARDING.md.
      (Ente Photos has no native OIDC; members onboard via email-OTT and store
      their Ente password in their Pocket-ID-SSO'd Vaultwarden vault.)
+
+  4. Monitoring — see docs/MONITORING.md:
+     a. Claim the Uptime Kuma admin account at https://status.${BASE_DOMAIN} IMMEDIATELY.
+        Until you do, its setup wizard is open to whoever finds it (docs/SECURITY_PASS.md, SEC-2).
+     b. Put that password in services/autokuma/.env as AUTOKUMA__KUMA__PASSWORD,
+        then: docker compose up -d autokuma
+        (Until it's set, autokuma can't log in and no monitors get created.)
+     c. Create a notification channel in Kuma and press its Test button.
+        This step is manual on purpose, and nothing else alerts without it.
 EOF
+
+# The Proxmox host runs the SMART check outside this compose, so its push URL
+# can't be written to a file from here. Surface it rather than making the admin
+# go digging in services/autokuma/.env for a value they don't know exists.
+if [[ -n "${SMART_HOST_PUSH_TOKEN:-}" ]]; then
+	cat <<EOF
+
+  5. On the PROXMOX HOST (not this VM), run services/smart/host/install.sh and set
+     HEALTHCHECK_URL in /etc/coralstack/smart.env to:
+
+       https://status.${BASE_DOMAIN}/api/push/${SMART_HOST_PUSH_TOKEN}
+
+     The public URL, not the container name — the host isn't on the coralstack
+     docker network, so it hairpins back through the eero.
+EOF
+fi

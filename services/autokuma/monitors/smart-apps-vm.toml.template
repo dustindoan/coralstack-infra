@@ -1,0 +1,8 @@
+# SMART check on the apps VM — the TerraMaster (photo blobs + media).
+# Pushes status=down WITH the finding text, so an alert names the drive and
+# the reason rather than just going red. See docs/HARDWARE_FAILURE.md.
+type = "push"
+name = "SMART (apps VM)"
+push_token = "${SMART_APPS_PUSH_TOKEN}"
+interval = 172800
+max_retries = 0

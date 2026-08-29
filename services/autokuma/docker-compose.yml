@@ -1,0 +1,55 @@
+# AutoKuma — the monitoring config, as code.
+#
+# Uptime Kuma keeps its monitors, notifications and status pages ONLY in its
+# own SQLite DB, and v2 removed the JSON export/import — so without this, the
+# monitor set is hand-clicked and exists nowhere in the repo. AutoKuma
+# reconciles Kuma against declarative .toml files, which means the monitor set
+# is reviewed in a PR like everything else and comes back on its own after a
+# rebuild. See docs/MONITORING.md.
+#
+# ─── Verified, not assumed ───────────────────────────────────────────────────
+# AutoKuma 2.0.0 was spiked against Uptime Kuma 2.4.0 (2026-08-25) before this
+# service was written: file-only mode created both HTTP and push monitors, and
+# a pinned push token accepted a real heartbeat. The Python wrappers everyone
+# reaches for first do NOT work with Kuma 2.x — see the ROADMAP row.
+#
+# ─── Why file-only, and no Docker socket ─────────────────────────────────────
+# AutoKuma can also read monitor definitions from Docker container labels, but
+# that needs docker.sock. In this stack the socket is the strictest gate
+# (docs/ADMIN_ACCESS.md) — Portainer holds it as a deliberate exception, and a
+# monitoring helper is not a good reason for a second holder. Static files also
+# keep the whole monitor set in one reviewable place, and cover the things that
+# aren't containers at all (the public TLS edge).
+services:
+  autokuma:
+    image: ghcr.io/bigboot/autokuma:2.0.0
+    container_name: autokuma
+    restart: unless-stopped
+    depends_on:
+      - uptime-kuma
+    env_file:
+      # Hand-created on the box from .env.example (deploy workflow).
+      - path: .env
+        required: false
+    environment:
+      TZ: ${TZ}
+      # Reached by container name on the coralstack network — no dependency on
+      # DNS, the public hostname, or the eero hairpin.
+      AUTOKUMA__KUMA__URL: http://uptime-kuma:3001
+      # Files, not Docker labels. See the header.
+      AUTOKUMA__DOCKER__ENABLED: "false"
+      AUTOKUMA__STATIC_MONITORS: /monitors
+    volumes:
+      # ⚠️ PERSISTENT AND LOAD-BEARING. AutoKuma tracks which Kuma monitor it
+      # created for each definition in /data/autokuma.db, and the image
+      # declares NO volume of its own. Without this mount, every `compose up`
+      # that recreates the container forgets those mappings and creates a
+      # SECOND copy of every monitor — verified in the spike: monitor count
+      # went 3 → 5 on one recreation, then held steady at 5 across two more
+      # once /data persisted. Duplicates are not self-healing either; AutoKuma
+      # only manages what it remembers, so orphans need deleting by hand.
+      - ${DATA_PATH:?DATA_PATH must be set — run ./setup.sh}/autokuma/data:/data
+      # Rendered by setup.sh from services/autokuma/monitors/ — the plain
+      # .toml files are copied, the .toml.template ones get their push tokens
+      # substituted in. Read-only: AutoKuma never writes here.
+      - ${DATA_PATH}/autokuma/monitors:/monitors:ro

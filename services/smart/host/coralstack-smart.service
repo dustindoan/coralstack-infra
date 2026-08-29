@@ -1,0 +1,20 @@
+[Unit]
+# SMART check for disks only the Proxmox HOST can see — principally the NUC's
+# M.2 SSD, which carries Proxmox itself plus both VMs' virtual disks. From
+# inside the apps VM that disk is a virtio device with no SMART behind it, so
+# the containerized runner (services/smart/) cannot cover it. See
+# docs/HARDWARE_FAILURE.md.
+Description=CoralStack SMART disk check
+Documentation=https://github.com/dustindoan/coralstack-infra/blob/main/docs/HARDWARE_FAILURE.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/coralstack/smart.env
+ExecStart=/usr/local/bin/smart-check.sh
+# The script exits non-zero on any WARN/FAIL. That's a finding, not a crash —
+# we do NOT want systemd restarting or masking it, and the push to Uptime Kuma
+# has already carried the reason. `journalctl -u coralstack-smart` holds the
+# detail either way.
+SuccessExitStatus=0 1

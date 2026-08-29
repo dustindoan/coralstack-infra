@@ -11,7 +11,8 @@ launch-killing story — so this is the top infrastructure gap.
 > **RAID is not backup.** RAID protects against a drive dying (availability). It
 > does nothing about accidental deletion, filesystem corruption, enclosure
 > death, theft, fire, or ransomware. This document is about *durability*, which
-> is a separate problem.
+> is a separate problem. The other half — diagnosing the drive that is dying
+> and getting back afterwards — is [HARDWARE_FAILURE.md](HARDWARE_FAILURE.md).
 
 ## How it works
 
@@ -47,6 +48,7 @@ restore source.
 | Ente Postgres + photo blobs (MinIO) | The irreplaceable data. Always backed up. |
 | Vaultwarden DB + attachments/sends/keys | Vaults are E2E-encrypted regardless. |
 | Pocket ID DB + config | Identity provider. |
+| Uptime Kuma DB | The monitor set, notification channels and status page — hand-built config with **no config-as-code path**, so this database is its only source of truth. |
 | All other service configs under `${DATA_PATH}` | Jellyfin/Dispatcharr/Open WebUI settings, Caddy data, etc. |
 | The compose tree (`/config`), incl. gitignored `services/*/.env` | The hand-created secret files exist **only on this host** — without them a rebuild means re-deriving every service secret while Vaultwarden (which holds them) is itself down. |
 | **Excluded by default** | **Why** |

@@ -1,0 +1,15 @@
+[Unit]
+Description=Run the CoralStack SMART disk check daily
+Documentation=https://github.com/dustindoan/coralstack-infra/blob/main/docs/HARDWARE_FAILURE.md
+
+[Timer]
+# Daily, offset from the apps-VM runner (06:20) so two alerts about the same
+# power event don't arrive at the same instant looking like one bigger problem.
+OnCalendar=*-*-* 06:50:00
+# Catch up after a boot that missed the window — a NUC that was off overnight
+# is exactly when you want the check to run, not skip.
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

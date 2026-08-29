@@ -2,6 +2,12 @@
 
 How to verify the coralstack returns from a full power outage with no human intervention, and the pre-flight checks that make that possible.
 
+> **Scope: the hardware is fine.** This runbook assumes every component still
+> works and the only question is whether it auto-started. If something is
+> broken — a disk reporting SMART errors, a box that won't POST, a drive that
+> dropped off the bus — go to [HARDWARE_FAILURE.md](HARDWARE_FAILURE.md)
+> instead, which covers diagnosis, replacement, and rebuild-from-backup.
+
 This is a runbook for the **Phase 1 Proxmox topology** (see [PROXMOX_MIGRATION.md](PROXMOX_MIGRATION.md) for the full architecture). The boot chain is:
 
 ```

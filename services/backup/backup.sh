@@ -43,8 +43,12 @@ else
 	warn "ENTE_DB_PASSWORD unset — skipping Ente Postgres dump (Ente not deployed?)"
 fi
 
-# Vaultwarden + Pocket ID — SQLite. The online .backup API is crash-consistent
-# even with the app writing concurrently; opening read-only is belt-and-braces.
+# Vaultwarden + Pocket ID + Uptime Kuma — SQLite. The online .backup API is
+# crash-consistent even with the app writing concurrently; opening read-only is
+# belt-and-braces. This matters more than "we copy /data anyway": these run in
+# WAL mode, so a raw file copy of the .db alone can miss committed transactions
+# still living in the -wal sidecar. The dumps in /staging are the authoritative
+# restore source; the copied directories under /data are the bonus.
 sqlite_backup() {
 	local src="$1" dst="$2" name="$3"
 	if [[ -f "$src" ]]; then
@@ -63,6 +67,19 @@ if [[ -n "$pocketid_db" ]]; then
 	sqlite_backup "$pocketid_db" "$DB_DIR/pocket-id.sqlite" "Pocket ID"
 else
 	warn "No /data/pocket-id/*.db found — skipping Pocket ID (not deployed, or using Postgres?)"
+fi
+
+# Uptime Kuma — the monitor set, notification channels and status page live
+# ONLY in this database. There is no config-as-code path for any of it (see
+# docs/MONITORING.md), so it is hand-built configuration with no other source
+# of truth: losing it means rebuilding the whole checklist by hand. Glob for
+# the filename the way we do for Pocket ID rather than hard-coding kuma.db,
+# so a rename across a Kuma major doesn't silently drop it.
+kuma_db="$(ls -1 /data/uptime-kuma/*.db 2>/dev/null | head -1 || true)"
+if [[ -n "$kuma_db" ]]; then
+	sqlite_backup "$kuma_db" "$DB_DIR/uptime-kuma.sqlite" "Uptime Kuma"
+else
+	warn "No /data/uptime-kuma/*.db found — skipping Uptime Kuma (not deployed, or using MariaDB?)"
 fi
 
 # ─── Build exclude list ──────────────────────────────────────────────────────

@@ -116,6 +116,49 @@ privileged to ever expose, even with SSO.
 Not yet implemented; design lives in this section so future-you knows where it'll
 land.
 
+### Uptime Kuma: no native SSO is coming — don't wait for it
+
+Checked 2026-08-25. Kuma has **no login SSO in any release**, 2.4.0 included.
+Two OIDC pull requests ([#6161](https://github.com/louislam/uptime-kuma/issues/6161),
+[#6232](https://github.com/louislam/uptime-kuma/pull/6232)) were both closed
+unmerged in October 2025; the maintainer declined to own a hand-rolled OIDC
+implementation ("I will not be able to maintain it in the future") and stated a
+preference for migrating auth to **Better Auth**, which would bring OIDC as a
+library feature. That migration is the realistic route, not another OIDC PR.
+
+> **Don't be fooled by the Authelia "Uptime Kuma / OpenID Connect" guide.** It
+> configures Kuma's *outbound monitor* authentication — OAuth2 **client
+> credentials**, so a monitor can probe an OAuth-protected endpoint. Client
+> credentials is machine-to-machine and has no user login step, so it cannot be
+> login SSO. It's a monitor setting, not an auth setting.
+
+So Kuma belongs with the *arr stack in the "will never self-SSO" bucket, and
+`forward_auth` is the only path to putting it behind Pocket ID.
+
+### `forward_auth` on Kuma must be path-scoped, not host-wide
+
+The instinct is to protect `status.<domain>` and be done. **That breaks things,
+some of them silently.** Three paths on that vhost must stay unauthenticated:
+
+| Path | Why it must stay open |
+| ---- | --------------------- |
+| `/status/*` | The public status page — the entire point of the vhost, and the mitigation members rely on when a cached PWA failure state lies to them |
+| `/api/push/*` | The push endpoints the nightly backup and **both** SMART checks post their heartbeats to (see [MONITORING.md](MONITORING.md)) |
+| Status-page static assets | The public page won't render without them |
+
+Both failure directions are bad, and they're asymmetric:
+
+- **Too broad** — the dead-man's-switches start returning 401. The heartbeats
+  stop arriving, Kuma reports the monitors as down, and the alerts you get are
+  about the alerting rather than about the stack. Worse, it looks exactly like
+  a real backup failure, so it burns trust in the signal.
+- **Too narrow** — the admin UI stays exposed, which is
+  [SEC-2](SECURITY_PASS.md#sec-2-medium--unclaimed-first-run-setup-wizard-on-a-public-vhost)
+  all over again.
+
+Whoever implements layer 3 should test the push endpoints **first** — before
+trusting a single alert from them afterward.
+
 ## Registry of admin UIs
 
 This is the authoritative list. Keep in sync with reality.
@@ -170,6 +213,26 @@ When adding a service whose web UI is admin-only:
 - [ ] Admin password is Tier 2 — stored in Vaultwarden `admin` collection on first boot
 - [ ] Entry added to [the registry above](#registry-of-admin-uis) with reach instructions
 - [ ] If `setup.sh` generates a password for it, the password is printed once and the user is reminded to store it in Vaultwarden
+
+## Checklist for new public-plane services
+
+When adding a service that **is** exposed through Caddy on its own subdomain —
+the case the admin-plane checklist above doesn't cover, and the one that let
+[SEC-2](SECURITY_PASS.md#sec-2-medium--unclaimed-first-run-setup-wizard-on-a-public-vhost)
+happen:
+
+- [ ] **Claim the admin account in the same session you deploy it** — or leave it
+      loopback-bound until you can. A service with an unclaimed first-run wizard
+      is not "authenticated but unconfigured", it is *open to whoever finds it
+      first*
+- [ ] Admin credential is Tier 2 — into Vaultwarden immediately, not "later"
+- [ ] Confirm the service has no "disable authentication" toggle enabled
+- [ ] Add a row to the [auth-coverage map](SECURITY_PASS.md#auth-coverage-map-caddy-edge)
+      saying how the vhost authenticates
+- [ ] Caddy network alias added in root `docker-compose.yml` (see its comment)
+- [ ] If anything on the vhost must stay public (status pages, push/webhook
+      endpoints), write down which paths — a future `forward_auth` will break
+      them otherwise
 
 ## Open questions
 

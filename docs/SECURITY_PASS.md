@@ -2,8 +2,11 @@
 
 A pre-soft-launch review of the externally reachable surface. This is a
 point-in-time snapshot, not a continuous control; re-run it before the public
-link and after any edge/firewall change. Scope: what an attacker on the public
-internet can see and reach, plus a repo-history secrets audit.
+link, after any edge/firewall change, **and whenever a new public vhost is
+added to the Caddyfile** — that last trigger was added after SEC-2, which is
+exactly the drift a point-in-time audit can't catch on its own. Scope: what an
+attacker on the public internet can see and reach, plus a repo-history secrets
+audit.
 
 ## Summary
 
@@ -11,7 +14,7 @@ internet can see and reach, plus a repo-history secrets audit.
 | --- | --- |
 | Git history secrets | ✅ **Clean** — `gitleaks` over all 57 commits, no leaks. |
 | Published container ports | ✅ Only Caddy `443` (+ `443/udp` HTTP/3). Dispatcharr bound to `127.0.0.1:9191`. |
-| Per-service auth | ✅ Every web-exposed service self-authenticates (see table below). |
+| Per-service auth | ⚠️ True for every service audited on 2026-07-15, but **not automatic for services added later** — see [SEC-2](#sec-2-medium--unclaimed-first-run-setup-wizard-on-a-public-vhost). An *unclaimed* service doesn't self-authenticate, it self-enrols. |
 | WAN port scan | ✅ **SEC-1 remediated + re-verified from off-net 2026-07-16** — see the finding's remediation log. |
 | Vaultwarden signups | ✅ `SIGNUPS_ALLOWED=false`, invitation-only. |
 
@@ -72,6 +75,48 @@ identified, verified from off-net:
 5. **Off-net verification:** `dig @38.175.158.9 google.com` from an external
    vantage point now **times out** (previously: six A records with `ra` set).
 
+### SEC-2 (MEDIUM) — Unclaimed first-run setup wizard on a public vhost
+
+**`status.<BASE_DOMAIN>` served Uptime Kuma's unclaimed setup wizard to the
+public internet.** Discovered 2026-08-25 when the admin opened the URL and was
+offered account creation rather than a login. Kuma had been deployed some time
+earlier and never configured.
+
+**Why it matters.** Anyone who found the hostname could have created the admin
+account and owned the monitoring instance. Blast radius is bounded but real:
+Kuma sits on the `coralstack` docker network and can issue HTTP probes to every
+service by container name, so a claimant gets a map of the internal topology
+plus a probe primitive against internal addresses. It grants no shell, no data,
+and nothing in the vaults.
+
+**Not exploited.** The setup wizard still being offered is itself the proof —
+had anyone claimed it, the page would have shown a login form instead.
+
+**Remediation — 2026-08-25, CLOSED.** Admin account created immediately, with a
+generated password stored in Vaultwarden as a Tier-2 secret. Verify
+`Settings → Security → Disable Authentication` stays **off**; that toggle
+deliberately reopens this exact hole.
+
+#### The class, which matters more than the incident
+
+This is not a Kuma bug. It's a property of the deploy pattern:
+
+> bring the container up → Caddy routes it publicly → configure it later
+
+Every service with a first-run setup wizard has a **claim window** sized by how
+long "later" lasts. Jellyfin, Open WebUI and Pocket ID all share the property —
+each one's first account becomes an admin. They're fine only because daily use
+claimed them within minutes of deployment. That was circumstance, not design.
+
+It also shows how the audit's own summary went stale: "every web-exposed service
+self-authenticates" was true when it was written and became false the moment a
+new vhost shipped, with nothing to notice. Hence the new re-run trigger at the
+top of this document.
+
+**The rule:** a new public vhost is **claimed in the same session it is
+deployed**, or it stays loopback-bound until it is. Added to the
+[new-service checklist](ADMIN_ACCESS.md#checklist-for-new-public-plane-services).
+
 ## Auth-coverage map (Caddy edge)
 
 There is intentionally **no `forward_auth` SSO gate** in front of the services
@@ -87,6 +132,7 @@ memory / ROADMAP). Instead every exposed vhost authenticates itself:
 | `photos-storage.` | MinIO | AWS SigV4 presigned URLs only (museum-issued). |
 | `media.` | Jellyfin | Own login + SSO-Auth plugin. |
 | `ai.` | Open WebUI | Own login, OIDC via Pocket ID. |
+| `status.` | Uptime Kuma | Status page public **by design**; admin UI behind Kuma's own login. Was unauthenticated until claimed — see [SEC-2](#sec-2-medium--unclaimed-first-run-setup-wizard-on-a-public-vhost). No native SSO exists for it (see [ADMIN_ACCESS](ADMIN_ACCESS.md#reach-mechanisms-phase-2--shared-admin)). |
 | *(none)* | Dispatcharr | **Not exposed via Caddy** — bound to `127.0.0.1:9191`. |
 
 **Assessment:** acceptable for launch. No service is exposed without
@@ -117,4 +163,8 @@ gitleaks git . --no-banner                       # history secrets
 grep -rn "ports:" -A1 services/*/docker-compose.yml docker-compose.yml
 nmap -Pn -T4 --top-ports 1000 <WAN_IP>           # external port surface
 dig @<WAN_IP> google.com                          # open-resolver check (expect REFUSED/timeout)
+
+# Vhost drift: every public hostname Caddy serves should have a row in the
+# auth-coverage map above, and each should answer with a LOGIN, not a setup wizard.
+grep -oE '^[a-z0-9.*{$-]+\{' caddy/Caddyfile
 ```

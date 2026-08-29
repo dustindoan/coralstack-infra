@@ -44,7 +44,7 @@ NUC7i7BNH (single NIC)   Mac mini (admin/inference box)
      OPNsense firewall:     LAN (10.0.0.0/24) ↔ OPT1 (10.0.1.0/24) pass
 ```
 
-See [Phase 1 trial-phase accepted compromises](../../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_infrastructure_architecture.md) for the honest framing of what this buys vs. deferred improvements.
+See the Phase 1 trial-phase accepted compromises design note for the honest framing of what this buys vs. deferred improvements.
 
 ## Prerequisites and prep
 
@@ -640,7 +640,7 @@ After this you can unplug the monitor and keyboard — manage everything via SSH
 
 2. **Update Cloudflare DNS records.** For each service subdomain (`photos.${BASE_DOMAIN}`, `media.${BASE_DOMAIN}`, etc.):
    - Change the A record from the old tailnet IP to your **current public IP** (what `curl ifconfig.me` returns from any device on your network, or `whatismyip.com`). OPNsense DDNS will keep this updated going forward.
-   - Proxy status: DNS only (grey cloud). Never orange cloud per [infrastructure architecture memory](../../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_infrastructure_architecture.md) Layer 4.
+   - Proxy status: DNS only (grey cloud). Never orange cloud per the infrastructure architecture design note, Layer 4.
 
 3. **Test from outside.** From your phone on cellular (not home WiFi), hit each service URL. Caddy should serve TLS, services should respond.
 
@@ -673,13 +673,13 @@ Total rollback time: ~2-3 hours if backups are organized.
 Track these so they don't fall off the radar:
 
 **Storage + backup:**
-- **Populate TerraMaster with 3 more 8TB drives + build mdadm RAID 6 + set up restic backups + offsite rotation.** See [backup strategy memory](../../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_backup_strategy.md). Trigger: when real data stops being expendable.
+- **Populate TerraMaster with 3 more 8TB drives + build mdadm RAID 6 + set up restic backups + offsite rotation.** See the backup strategy design note. Trigger: when real data stops being expendable.
 - **Export OPNsense `config.xml` to Tier 1 safe storage** (paper + USB in the physical safe). Diagnostics → Backup/Restore → Download configuration. Do this after any material firewall/NAT/DHCP change. Lets you rebuild OPNsense from scratch in minutes via Restore. Not IaC, but a valid backup posture until/unless we go full OPNsense-as-code.
 
 **Infrastructure as code (not yet done — all documented in runbook as manual steps):**
 - **Proxmox VM definitions → Terraform** (`bpg/proxmox` provider). Captures OPNsense + Apps VM hardware config, USB passthrough, start-at-boot order. Pays off when you rebuild either VM.
 - **Cloudflare DNS → Terraform.** Cloudflare provider is mature. Single source of truth for subdomains. DDNS record is managed by OPNsense itself; Terraform owns the static wildcard.
-- **OPNsense config → declarative** via either (a) `config.xml` import at first boot bundled with our installer ISO, or (b) ansible-role-style config push. (a) is simpler for homogeneous deployments, (b) scales better for per-member customization. Matches the "Phase 2 deliverable" in the [install simplicity target memory](../../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_install_simplicity_target.md).
+- **OPNsense config → declarative** via either (a) `config.xml` import at first boot bundled with our installer ISO, or (b) ansible-role-style config push. (a) is simpler for homogeneous deployments, (b) scales better for per-member customization. Matches the "Phase 2 deliverable" in the install simplicity target design note.
 - **Pocket ID config → API/SDK scripts.** OIDC client registrations, group definitions, group-to-client allowlist. Pocket ID has a REST API. A `pocket-id-bootstrap` script in the repo could replay the config against a fresh install. Would make member onboarding scripting trivial.
 - **Jellyfin config → scripted bootstrap.** Local admin user, media library paths, SSO-Auth plugin provider configuration. Jellyfin has a REST API. Same pattern as Pocket ID — a bootstrap script that creates the admin, adds libraries, configures the plugin.
 - **Vaultwarden config → bootstrap script.** Less critical since most state is user-created inside the vault, but the SSO config, admin token, and any org definitions could be scripted.
@@ -690,7 +690,7 @@ Track these so they don't fall off the radar:
 - **Add a working museum healthcheck.** Ente's upstream quickstart ships `curl --fail http://localhost:8080/ping`, but `ghcr.io/ente-io/server` doesn't include curl — the check always fails. Currently we omit the healthcheck entirely (better than a perpetual false negative). Replace with whatever's actually in the image (`wget`? Museum binary's own health subcommand if added?), or build a thin sidecar.
 - **Remove the now-unused ente-socat sidecar.** Originally bridged museum's `localhost:3200` to ente-minio for the upstream-quickstart's S3 routing trick. Replaced 2026-04-24 by routing all S3 traffic through Caddy's `photos-storage.${BASE_DOMAIN}` route (museum's own S3 calls now go via Caddy too — same endpoint as clients see, signature consistency). Socat container is still defined and running but does nothing. Drop the service block when convenient.
 - **Path A: museum OIDC-provisioning patch** ([spike chip queued separately](#known-followups)). Eliminates the OTT-from-logs ritual and the disable-registration toggle dance for new-member onboarding. Keeps SRP/E2EE crypto unchanged. Trigger: when onboarding household #2, or sooner if the toggle ritual gets annoying enough during the trial.
-- **Watch upstream's MinIO migration.** Per [Ente strategy memory](../../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_ente_strategy.md), MinIO's GitHub repo was archived in early 2026; Ente will likely migrate the bundled object store (likely to Garage). When `ente-io/ente:server/quickstart.sh` shows a different stack, diff against our overlay and update.
+- **Watch upstream's MinIO migration.** Per the Ente strategy design note, MinIO's GitHub repo was archived in early 2026; Ente will likely migrate the bundled object store (likely to Garage). When `ente-io/ente:server/quickstart.sh` shows a different stack, diff against our overlay and update.
 
 **Network / hardware:**
 - **Single-NIC VLAN segmentation is live** (Phase 3f + 4c above). The AirPort-as-dumb-switch + `bridge-vlan-aware yes` + OPNsense OPT1 approach gives the Mac mini a DMZ IP without touching eero and without a second physical NIC. The remaining limitation is no true L2 isolation between eero-LAN devices — all home devices share the untagged segment. That's acceptable for Phase 1 single-household.

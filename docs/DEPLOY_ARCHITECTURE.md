@@ -2,7 +2,7 @@
 
 > **Status (2026-07-17):** 💭 specced, not built. The primitive below does not
 > exist yet; today's deploy is still hand-run `git pull && docker compose up -d`
-> on the box (see [memory: deploy workflow](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_deploy_workflow.md)).
+> on the box (see the deploy workflow design note).
 > This doc is the target and the build plan. Prerequisite —
 > [backups](BACKUPS.md) — is now met, which is what makes a *safe* deploy button
 > possible at all.
@@ -71,7 +71,7 @@ Properties that matter:
 - **Honors the `.env` gotcha** — gitignored `services/*/.env` files do **not**
   travel with a pull. The primitive must detect a service whose compose gained a
   required env var with no matching `.env` on the box and *refuse with a clear
-  message*, not bring it up half-configured. (See [memory: deploy workflow](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_deploy_workflow.md).)
+  message*, not bring it up half-configured. (See the deploy workflow design note.)
 
 Everything below is a *trigger* for this one primitive. Build it once.
 
@@ -81,7 +81,7 @@ Everything below is a *trigger* for this one primitive. Build it once.
 | --- | --- | --- |
 | **CLI** — `coralstack deploy [ref]` | admin at a shell | scripted / power use; the `setup`+`doctor` CLI grows this verb |
 | **Admin-panel button** | admin in the loopback panel | the everyday human path — see below |
-| **lettabot** (later) | the admin agent | autonomous, within approval gates — the Phase 2 [admin agent](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_admin_agent.md) |
+| **lettabot** (later) | the admin agent | autonomous, within approval gates — the Phase 2 admin agent design note |
 
 The insight: the admin-panel button is **both** the endgame surface for the
 human-operated tier **and** the manual precursor to autonomous ops. Same engine
@@ -171,8 +171,8 @@ and the admin-panel action surface already shipped for the Ente deletion queue.
   the *deployment* half. Together they're the full update loop.
 - [BACKUPS.md](BACKUPS.md) — the way back. Hard prerequisite for a safe deploy
   primitive.
-- [admin agent memory](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_admin_agent.md) —
+- The admin agent design note —
   lettabot is the eventual autonomous trigger; this primitive is what it calls.
-- [deploy workflow memory](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_deploy_workflow.md) —
+- The deploy workflow design note —
   the current manual mechanism this replaces, and the `.env` gotcha the primitive
   must honor.

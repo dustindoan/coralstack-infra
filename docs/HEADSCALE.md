@@ -3,7 +3,7 @@
 Self-hosted Tailscale control plane. **Not yet deployed.** This doc captures the
 direction so Phase 1 decisions stay compatible with it.
 
-See [memory: Headscale candidate](../.claude/projects/-Users-dustindoan-Dev-personal-coral/memory/project_coralstack_headscale_candidate.md)
+See the Headscale candidate design note
 for the original framing.
 
 ## Why this is on the roadmap

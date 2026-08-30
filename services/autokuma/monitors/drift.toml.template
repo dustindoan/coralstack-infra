@@ -1,0 +1,11 @@
+# Deploy drift on the apps VM — is the box running what the repo says?
+# Pushes status=down WITH the reason (wrong branch, uncommitted edits,
+# unpushed commits, behind origin), so the alert names the problem.
+#
+# 48h heartbeat against a daily check: one missed run is tolerated, two is a
+# finding. Same tolerance as the SMART monitors.
+type = "push"
+name = "Deploy drift (apps VM)"
+push_token = "${DRIFT_PUSH_TOKEN}"
+interval = 172800
+max_retries = 0

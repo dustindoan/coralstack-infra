@@ -1,0 +1,36 @@
+# Deploy-drift monitoring — does the box's checkout match the repo?
+#
+# The deploy model (docs/DEPLOY_ARCHITECTURE.md) is one-way: repo -> box via
+# `git pull`. Nothing verified that it held. On 2026-08-28 the box was found on
+# a feature branch carrying three commits that existed on no other machine, and
+# a routine `git pull` reported success while fetching nothing — the branch had
+# no upstream. This container is the check that would have caught it.
+#
+# ─── Why the repo is mounted read-only ───────────────────────────────────────
+# A monitor that can mutate the deploy tree is a worse problem than the drift
+# it watches. The check never fetches, checks out, or pushes: it reads local
+# git state and asks origin a single `git ls-remote` question. The repo is
+# public, so that needs no credentials — this container holds no secret beyond
+# its own push token.
+services:
+  drift:
+    build: .
+    image: coralstack/drift:git
+    # Custom-built image — don't try to pull it from a registry.
+    pull_policy: build
+    container_name: drift
+    restart: unless-stopped
+    env_file:
+      # Hand-created on the box from .env.example (deploy workflow).
+      - path: .env
+        required: false
+    environment:
+      TZ: ${TZ}
+      DRIFT_REPO_PATH: /repo
+      DRIFT_HOST_LABEL: ${DRIFT_HOST_LABEL:-apps-vm}
+      DRIFT_EXPECTED_BRANCH: ${DRIFT_EXPECTED_BRANCH:-main}
+    volumes:
+      # The deploy checkout itself — the thing being audited. Read-only: see
+      # the note above. `../..` is the repo root, the same path services/backup
+      # mounts for its config snapshot.
+      - ../..:/repo:ro

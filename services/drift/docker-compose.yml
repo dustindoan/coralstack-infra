@@ -27,6 +27,8 @@ services:
     environment:
       TZ: ${TZ}
       DRIFT_REPO_PATH: /repo
+      DRIFT_AUTOKUMA_DATA: /autokuma
+      DRIFT_KUMA_DB: /kuma/kuma.db
       DRIFT_HOST_LABEL: ${DRIFT_HOST_LABEL:-apps-vm}
       DRIFT_EXPECTED_BRANCH: ${DRIFT_EXPECTED_BRANCH:-main}
     volumes:
@@ -34,3 +36,10 @@ services:
       # the note above. `../..` is the repo root, the same path services/backup
       # mounts for its config snapshot.
       - ../..:/repo:ro
+      # AutoKuma's own state dir. It rewrites data/autokuma.db/db every sync
+      # (~10s), so the mtime is a liveness heartbeat — the signal that catches
+      # a disconnected AutoKuma even when no config change is pending.
+      - ${DATA_PATH:?DATA_PATH must be set in .env — run ./setup.sh}/autokuma:/autokuma:ro
+      # Kuma's DB, to count the monitors that actually exist. Read-only, and
+      # read-only is load-bearing: nothing here may ever write to Kuma's state.
+      - ${DATA_PATH}/uptime-kuma:/kuma:ro

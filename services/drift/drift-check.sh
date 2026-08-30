@@ -18,6 +18,25 @@
 # a worse problem than the drift it watches. That is also why the repo is
 # mounted `:ro`: a fetch would need to write to .git.
 #
+# ALSO WATCHES AUTOKUMA. Same question, one layer up: the repo declares a
+# monitor set, AutoKuma is what makes Kuma match it. On 2026-08-30 AutoKuma sat
+# disconnected for ~2 hours after Uptime Kuma was restarted — ~1,400 failed
+# syncs, WARN every 5s, container still `Up`, monitors still green. Only the
+# declarative layer was dead, and nothing noticed. Any Kuma restart (update,
+# reboot, power cut) reproduces it.
+#
+# Two signals, because they fail differently:
+#   - LIVENESS: AutoKuma rewrites its own state file (${AUTOKUMA_DATA}/data/
+#     autokuma.db/db) every sync cycle, ~10s. A stale mtime means it is not
+#     syncing, even when nothing needs changing. This is the one that catches
+#     the 2026-08-30 case.
+#   - AGREEMENT: the count of monitor files in the repo vs monitors actually in
+#     Kuma. Catches a monitor added by hand in the UI, a setup.sh that was never
+#     re-run, and a pending change AutoKuma never applied.
+#
+# Both are SKIPPED cleanly when their mounts are absent, so this script still
+# runs anywhere — same host-agnostic property as services/smart/smart-check.sh.
+#
 # ALERTING: pushes to HEALTHCHECK_URL (an Uptime Kuma push monitor) with an
 # explicit up/down and the reason, mirroring services/smart/smart-check.sh. If
 # this script stops running, the heartbeat lapses and Kuma alerts on that too.
@@ -29,6 +48,12 @@ set -uo pipefail
 REPO="${DRIFT_REPO_PATH:-/repo}"
 EXPECTED_BRANCH="${DRIFT_EXPECTED_BRANCH:-main}"
 LABEL="${DRIFT_HOST_LABEL:-apps-vm}"
+AUTOKUMA_DATA="${DRIFT_AUTOKUMA_DATA:-/autokuma}"
+KUMA_DB="${DRIFT_KUMA_DB:-/kuma/kuma.db}"
+MONITOR_DIR="${DRIFT_MONITOR_DIR:-$REPO/services/autokuma/monitors}"
+# Sync cycle is ~10s. 600s tolerates a restart or a slow reconcile without
+# crying wolf, while still catching a stall the same morning.
+STALE_AFTER="${DRIFT_AUTOKUMA_STALE_AFTER:-600}"
 
 log()  { echo "[drift] $*"; }
 warn() { echo "[drift] WARNING: $*" >&2; }
@@ -89,9 +114,47 @@ else
 		fi
 	fi
 
+	# ─── AutoKuma: is the declarative layer actually running? ─────────────
+	# Skipped, not failed, when the mount is absent — this script runs on hosts
+	# that have no AutoKuma.
+	akdb="$AUTOKUMA_DATA/data/autokuma.db/db"
+	if [[ -f "$akdb" ]]; then
+		# GNU/busybox use -c %Y, BSD uses -f %m. Try both, and NEVER fall back
+		# to 0: a failed stat would compute an age of ~the whole Unix epoch and
+		# report a confident, entirely fictional stall. A monitor that invents a
+		# fault costs the same trust as one that misses a real one.
+		mtime="$(stat -c %Y "$akdb" 2>/dev/null || stat -f %m "$akdb" 2>/dev/null || true)"
+		if [[ -z "$mtime" || ! "$mtime" =~ ^[0-9]+$ ]]; then
+			FINDINGS+=("could not read AutoKuma's heartbeat mtime at $akdb (stat unsupported?)")
+		else
+			age=$(( $(date +%s) - mtime ))
+			if (( age > STALE_AFTER )); then
+				FINDINGS+=("AutoKuma has not synced in ${age}s (>${STALE_AFTER}s) — config-as-code is stalled, check 'docker logs autokuma' for EngineIO errors")
+			fi
+		fi
+	fi
+
+	# ─── AutoKuma: does Kuma agree with the repo? ─────────────────────────
+	# Counts the monitor files in the REPO, not the rendered copy under
+	# ${DATA_PATH} — comparing against the repo also catches a setup.sh that
+	# was never re-run after a pull.
+	if [[ -d "$MONITOR_DIR" && -r "$KUMA_DB" ]]; then
+		declared="$(find "$MONITOR_DIR" -maxdepth 1 -type f \( -name '*.toml' -o -name '*.toml.template' \) 2>/dev/null | wc -l | tr -d ' ')"
+		# A read failure here is not drift — say so rather than alarming.
+		if actual="$(sqlite3 "$KUMA_DB" 'select count(*) from monitor;' 2>/dev/null)" && [[ -n "$actual" ]]; then
+			if [[ "$declared" != "$actual" ]]; then
+				FINDINGS+=("monitor set disagrees: $declared declared in repo, $actual live in Kuma")
+			fi
+		else
+			FINDINGS+=("could not read Kuma's monitor table (db locked or schema changed?)")
+		fi
+	fi
+
 	if [[ ${#FINDINGS[@]} -eq 0 ]]; then
 		STATUS=OK
-		SUMMARY="$LABEL: in sync with origin/$EXPECTED_BRANCH @ ${head_sha:0:7}"
+		extra=""
+		[[ -f "$akdb" ]] && extra=" + autokuma live"
+		SUMMARY="$LABEL: in sync with origin/$EXPECTED_BRANCH @ ${head_sha:0:7}${extra}"
 	else
 		STATUS=DRIFT
 		# Join with "; ". Not `IFS='; '` + ${FINDINGS[*]} — that joins on only

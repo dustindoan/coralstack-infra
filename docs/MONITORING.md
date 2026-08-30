@@ -17,13 +17,32 @@ lands) · [RECOVERY.md](RECOVERY.md) (power loss) · [BACKUPS.md](BACKUPS.md).
 | **Uptime Kuma** | apps VM, `status.${BASE_DOMAIN}` | Service reachability; receives push heartbeats | Its own notification channels |
 | **Backup dead-man's-switch** | `services/backup/backup.sh` | That the nightly backup actually completed | Pushes to a Kuma **Push** monitor on success; silence = alert |
 | **SMART (apps VM)** | `services/smart/` container | The TerraMaster — the disk with the photo blobs | Pushes up/down **with the reason** to a Kuma Push monitor |
-| **SMART (Proxmox host)** | `services/smart/host/`, systemd timer | The NUC's M.2 — Proxmox + both VMs' disks | Same, via the public `status.` URL |
+| **SMART (Proxmox host)** | `services/smart/host/`, systemd timer | The NUC's internal SATA SSD — Proxmox + both VMs' disks | Same, via the public `status.` URL |
 | **Deploy drift** | `services/drift/` container | That the box's checkout matches the repo — right branch, nothing uncommitted, nothing unpushed | Pushes up/down **with the reason** to a Kuma Push monitor |
 | **AutoKuma** | `services/autokuma/` | Nothing — it *declares* the monitor set, reconciling Kuma against `.toml` files in this repo | n/a |
 
 Two SMART runners is not redundancy, it's coverage: **the apps VM physically
-cannot see the M.2.** From inside the VM that disk is a virtio device with no
+cannot see the host's internal SSD.** From inside the VM that disk is a virtio device with no
 SMART data behind it. Neither runner covers the other's disks.
+
+### Installing the host runner (there is no `git` on the Proxmox host)
+
+`services/smart/host/install.sh` says to run it "from a checkout of this repo",
+but the hypervisor has no `git` and deliberately keeps no checkout — one more
+checkout is one more thing that can drift, and the drift monitor only watches
+the apps VM. Copy the files it needs instead, from your workstation:
+
+```bash
+ssh proxmox 'rm -rf /tmp/coralstack-smart && mkdir -p /tmp/coralstack-smart'
+scp -r services/smart/smart-check.sh services/smart/host proxmox:/tmp/coralstack-smart/
+ssh proxmox 'bash /tmp/coralstack-smart/host/install.sh'
+```
+
+Then set `SMART_DEVICES` and `HEALTHCHECK_URL` in `/etc/coralstack/smart.env`
+and re-run `systemctl start coralstack-smart.service`. The push URL must be the
+**public** `https://status.${BASE_DOMAIN}/api/push/<token>` — the host is not on
+the docker network, so the container name won't resolve. Upgrades are the same
+three commands.
 
 ## Setup
 

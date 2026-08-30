@@ -4,8 +4,9 @@
 #
 # ─── SCOPE: this container sees only the disks THIS VM can see ───────────────
 # The apps VM has the TerraMaster passed through over USB, so this catches the
-# drive holding the photo blobs and media. It CANNOT see the NUC's M.2 SSD —
-# from inside the VM that's a virtio device with no SMART behind it. The M.2 is
+# drive holding the photo blobs and media. It CANNOT see the NUC's internal
+# SSD — from inside the VM that's a virtio device with no SMART behind it. That
+# disk is
 # monitored separately by the same script running natively on the Proxmox host
 # (services/smart/host/). Both halves are needed; neither covers the other.
 #

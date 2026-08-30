@@ -12,7 +12,7 @@
 #   - Apps VM, containerized (services/smart/docker-compose.yml) — sees the
 #     TerraMaster, which is USB-passed-through to this VM.
 #   - Proxmox host, natively via a systemd timer (services/smart/host/) — sees
-#     the NUC's M.2 SSD. The apps VM CANNOT see it: from inside the VM that
+#     the NUC's internal SATA SSD. The apps VM CANNOT see it: from inside the VM that
 #     disk is a virtio device with no SMART data behind it. This is why one
 #     runner isn't enough.
 #

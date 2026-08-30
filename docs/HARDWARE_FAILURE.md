@@ -34,8 +34,8 @@ smartctl --scan
 
 | Slot / role | Device | Model | Serial | Capacity | Purchased | Warranty ends |
 | ----------- | ------ | ----- | ------ | -------- | --------- | ------------- |
-| NUC internal M.2 | `/dev/nvme0` | | | | | |
-| TerraMaster bay 1 | `/dev/sdb` | | | | | |
+| NUC internal SSD (SATA, **not** M.2) | `/dev/sda` | SanDisk SDSSDA240G | `171015446910` | 240 GB | | |
+| TerraMaster bay 1 | `/dev/sdb` | Seagate ST8000DM004-2U9188 | `ZR16GZ2M` | 8 TB | | |
 | TerraMaster bay 2 | *(empty)* | — | — | — | — | — |
 | TerraMaster bay 3 | *(empty)* | — | — | — | — | — |
 | TerraMaster bay 4 | *(empty)* | — | — | — | — | — |
@@ -43,7 +43,7 @@ smartctl --scan
 | Box | Model | Role | Address | Notes |
 | --- | ----- | ---- | ------- | ----- |
 | NUC | NUC7 (Iris 650) | Proxmox host; runs OPNsense VM + apps VM | `192.168.4.10` mgmt, `192.168.4.20` OPNsense WAN | |
-| TerraMaster | D4-320 | USB-C DAS, passed through to apps VM | `/mnt/storage` | JMicron bridge; 1 of 4 bays populated |
+| TerraMaster | D4-320 | USB-C DAS, passed through to apps VM | `/mnt/storage` | ASMedia ASM235CM bridge (`174c:235c`), `-d sat`; 1 of 4 bays populated |
 | Mac mini | | Ollama inference | `10.0.1.10` (OPT1/VLAN 10) | |
 | eero | | Home router / WAN path | `192.168.4.1` | Consumer gear, no API |
 

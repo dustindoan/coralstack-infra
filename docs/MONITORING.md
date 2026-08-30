@@ -18,6 +18,7 @@ lands) · [RECOVERY.md](RECOVERY.md) (power loss) · [BACKUPS.md](BACKUPS.md).
 | **Backup dead-man's-switch** | `services/backup/backup.sh` | That the nightly backup actually completed | Pushes to a Kuma **Push** monitor on success; silence = alert |
 | **SMART (apps VM)** | `services/smart/` container | The TerraMaster — the disk with the photo blobs | Pushes up/down **with the reason** to a Kuma Push monitor |
 | **SMART (Proxmox host)** | `services/smart/host/`, systemd timer | The NUC's M.2 — Proxmox + both VMs' disks | Same, via the public `status.` URL |
+| **Deploy drift** | `services/drift/` container | That the box's checkout matches the repo — right branch, nothing uncommitted, nothing unpushed | Pushes up/down **with the reason** to a Kuma Push monitor |
 | **AutoKuma** | `services/autokuma/` | Nothing — it *declares* the monitor set, reconciling Kuma against `.toml` files in this repo | n/a |
 
 Two SMART runners is not redundancy, it's coverage: **the apps VM physically
@@ -82,6 +83,7 @@ after a rebuild — AutoKuma puts them back.
 | Nightly backup | Push | dead-man's-switch |
 | SMART (apps VM) | Push | dead-man's-switch |
 | SMART (Proxmox host) | Push | dead-man's-switch |
+| Deploy drift (apps VM) | Push | dead-man's-switch |
 
 To change the monitor set, edit a file and redeploy. To add one, drop in a new
 `.toml`. **Keep filenames stable** — the filename is AutoKuma's ID for the
@@ -119,6 +121,46 @@ that recreates the container forgets those mappings and creates a **second copy
 of every monitor**. Measured: the count went 3 → 5 on one recreation, then held
 at 5 across two more once `/data` persisted. Duplicates don't self-heal —
 AutoKuma only manages what it remembers — so orphans must be deleted by hand.
+
+### Deploy drift — the monitor that watches the deploy itself
+
+Every other monitor here asks "is the service up?". This one asks a different
+question: **is the box running what the repo says it is?**
+
+The deploy model ([DEPLOY_ARCHITECTURE.md](DEPLOY_ARCHITECTURE.md)) is one-way —
+changes flow repo → box via `git pull`, and the box is a pull-only target.
+Nothing enforced that. On **2026-08-28** the box was found sitting on a feature
+branch carrying three commits that existed on no other machine: the only copy of
+that day's storage-incident writeup lived on the disk the incident was about. A
+routine `git pull` reported success and fetched nothing, because the branch had
+no upstream.
+
+That is the shape of the failure worth naming. `DEPLOY_ARCHITECTURE.md` already
+specs a deploy primitive for **merged-but-not-deployed**. This is the mirror
+image — **deployed-but-not-merged** — and until now only one direction was
+instrumented.
+
+The check runs daily at 06:10 and reports drift when any of these hold:
+
+| Finding | Why it matters |
+| ------- | -------------- |
+| Not on the expected branch | The 2026-08-28 case. A `git pull` here is a silent no-op. |
+| Uncommitted changes to tracked files | Someone edited the box directly; the change exists nowhere else. |
+| Commits not pushed | **The dangerous one.** Work that exists only on this disk. |
+| Behind `origin/main` | Merged but not deployed — the other direction. |
+
+Untracked files are deliberately **not** flagged: the box legitimately carries
+gitignored per-service `.env` files, and alerting on those daily is how a
+monitor gets muted and stops being a monitor.
+
+It is **read-only by construction** — it never fetches, checks out, or pushes.
+It reads local git state and asks origin a single `git ls-remote` question
+(anonymous, the repo is public), and the repo is mounted `:ro`. A monitor that
+can mutate the deploy tree is a worse problem than the drift it watches.
+
+The rule this encodes isn't "never commit on the box" — during a live incident
+the box is often the only place the diagnosis can happen. It's **"if you commit
+on the box, push before you close the session."**
 
 ### 4. An external check — the one that catches a dead box
 

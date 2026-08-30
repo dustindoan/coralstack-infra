@@ -188,6 +188,7 @@ init_service_env jellyfin
 init_service_env backup
 init_service_env smart
 init_service_env autokuma
+init_service_env drift
 
 fill_secret services/pocket-id/.env   ENCRYPTION_KEY      "$(gen_hex)"
 fill_secret services/vaultwarden/.env ADMIN_TOKEN         "$(gen_base64)"
@@ -216,6 +217,7 @@ if [[ -f services/autokuma/.env ]]; then
 	fill_secret services/autokuma/.env BACKUP_PUSH_TOKEN     "$(gen_push_token)"
 	fill_secret services/autokuma/.env SMART_APPS_PUSH_TOKEN "$(gen_push_token)"
 	fill_secret services/autokuma/.env SMART_HOST_PUSH_TOKEN "$(gen_push_token)"
+	fill_secret services/autokuma/.env DRIFT_PUSH_TOKEN       "$(gen_push_token)"
 
 	# shellcheck disable=SC1091
 	set -a; source services/autokuma/.env; set +a
@@ -245,6 +247,7 @@ if [[ -f services/autokuma/.env ]]; then
 	}
 	wire_healthcheck services/backup/.env "${BACKUP_PUSH_TOKEN:-}"     "backup"
 	wire_healthcheck services/smart/.env  "${SMART_APPS_PUSH_TOKEN:-}" "SMART (apps VM)"
+	wire_healthcheck services/drift/.env  "${DRIFT_PUSH_TOKEN:-}"      "deploy drift"
 
 	# Render the monitor definitions into the directory AutoKuma mounts.
 	# Plain .toml files are copied; .toml.template files get substituted.
@@ -262,7 +265,7 @@ if [[ -f services/autokuma/.env ]]; then
 	for f in services/autokuma/monitors/*.toml.template; do
 		[[ -e "$f" ]] || continue
 		out="$autokuma_out/$(basename "$f" .template)"
-		envsubst '$BASE_DOMAIN $BACKUP_PUSH_TOKEN $SMART_APPS_PUSH_TOKEN $SMART_HOST_PUSH_TOKEN' \
+		envsubst '$BASE_DOMAIN $BACKUP_PUSH_TOKEN $SMART_APPS_PUSH_TOKEN $SMART_HOST_PUSH_TOKEN $DRIFT_PUSH_TOKEN' \
 			< "$f" > "$out"
 		rendered=$((rendered + 1))
 	done

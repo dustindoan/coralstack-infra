@@ -149,6 +149,14 @@ init_service_env() {
 }
 
 # Fill a blank KEY= line in a file with a generated value. No-op if already set.
+#
+# If the key is ABSENT entirely, append it. That case is not hypothetical: an
+# existing deployment's .env was copied from the .env.example as it stood on
+# the day it was created, so any key added to the example LATER never reaches
+# it — init_service_env only copies when the file is missing. Without this,
+# every future token silently skips every existing box, and the failure is
+# quiet: setup.sh reports success and the service comes up unwired. That is
+# exactly what DRIFT_PUSH_TOKEN did on 2026-08-30.
 fill_secret() {
 	local file="$1" key="$2" value="$3"
 	if grep -qE "^${key}=$" "$file"; then
@@ -158,6 +166,9 @@ fill_secret() {
 			{ print }
 		' "$file" > "$file.tmp" && mv "$file.tmp" "$file"
 		log "Generated $key in $file"
+	elif ! grep -qE "^${key}=" "$file"; then
+		printf '%s=%s\n' "$key" "$value" >> "$file"
+		log "Added missing $key to $file (new since this .env was created)"
 	fi
 }
 

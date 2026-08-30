@@ -172,6 +172,29 @@ Untracked files are deliberately **not** flagged: the box legitimately carries
 gitignored per-service `.env` files, and alerting on those daily is how a
 monitor gets muted and stops being a monitor.
 
+**It also watches AutoKuma** — the same question one layer up. The repo declares
+the monitor set; AutoKuma is what makes Kuma match it. On **2026-08-30**
+AutoKuma sat disconnected for about two hours after Uptime Kuma was restarted:
+~1,400 failed syncs, `WARN` every five seconds, container still `Up`, every
+monitor still green. Only the declarative layer was dead, and nothing noticed.
+Any Kuma restart — an update, a reboot, a power cut — reproduces it.
+
+| Signal | Catches |
+| ------ | ------- |
+| **Liveness** — AutoKuma rewrites `${DATA_PATH}/autokuma/data/autokuma.db/db` every sync cycle (~10s); a stale mtime means it has stalled | A disconnected AutoKuma **even when no config change is pending** — the 2026-08-30 case |
+| **Agreement** — monitor files in the repo vs monitors actually in Kuma | A monitor added by hand in the UI, a `setup.sh` never re-run after a pull, a pending change never applied |
+
+Both are skipped cleanly when their mounts are absent, so the check still runs
+on hosts with no AutoKuma. Both mounts are **read-only**, and that is
+load-bearing: nothing in this container may ever write to Kuma's state.
+
+> **Notification attachment is not AutoKuma's business.** Verified 2026-08-30:
+> AutoKuma reconciles the properties its `.toml` files declare and leaves
+> `monitor_notification` alone, so a channel attached in the UI survives its
+> syncs. Ticking **Default enabled** additionally means any monitor AutoKuma
+> creates in future inherits the channel — worth doing, because otherwise a new
+> `.toml` lands unalerted.
+
 It is **read-only by construction** — it never fetches, checks out, or pushes.
 It reads local git state and asks origin a single `git ls-remote` question
 (anonymous, the repo is public), and the repo is mounted `:ro`. A monitor that

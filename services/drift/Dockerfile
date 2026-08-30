@@ -3,6 +3,8 @@
 # Custom image (like backup/, smart/ and ente-janitor/) so the toolchain is
 # explicit:
 #   - git         : reads local repo state and asks origin one question
+#   - sqlite      : counts the monitors Kuma actually has, to compare against
+#                   what the repo declares (read-only; the DB is mounted :ro)
 #   - curl        : pushes the verdict to the Uptime Kuma push monitor
 #   - supercronic : container-friendly cron that passes the parent env to jobs
 #                   (busybox crond strips it — a classic footgun)
@@ -21,6 +23,7 @@ RUN apk add --no-cache \
       ca-certificates \
       curl \
       git \
+      sqlite \
       tzdata \
  && curl -fsSL -o /usr/local/bin/supercronic \
       "https://github.com/aptible/supercronic/releases/download/${SUPERCRONIC_VERSION}/supercronic-linux-amd64" \

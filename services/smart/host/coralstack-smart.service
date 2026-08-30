@@ -1,6 +1,6 @@
 [Unit]
 # SMART check for disks only the Proxmox HOST can see — principally the NUC's
-# M.2 SSD, which carries Proxmox itself plus both VMs' virtual disks. From
+# SATA SSD, which carries Proxmox itself plus both VMs' virtual disks. From
 # inside the apps VM that disk is a virtio device with no SMART behind it, so
 # the containerized runner (services/smart/) cannot cover it. See
 # docs/HARDWARE_FAILURE.md.

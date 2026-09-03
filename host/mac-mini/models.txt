@@ -1,0 +1,24 @@
+# Declared model set for the Mac mini — one Ollama tag per line.
+#
+# ollama-reconcile.sh pulls anything listed here that is missing, and REPORTS
+# (never removes) anything on the box that isn't listed. To actually remove a
+# model, drop its line here and run `ollama-reconcile.sh --prune` by hand — a
+# 17 GB re-pull is a slow mistake to undo. See docs/MAC_MINI.md.
+#
+# Tags follow what the box already uses: nvfp4 quantization for Qwen, mlx for
+# Gemma. Check a tag exists before committing it:
+#   curl -so /dev/null -w '%{http_code}\n' \
+#     https://registry.ollama.ai/v2/library/<name>/manifests/<tag>
+
+# Primary chat + tool-use model behind Open WebUI.
+qwen3.8:27b-nvfp4
+
+# Previous primary. Kept during the 3.6 → 3.8 changeover so there's something to
+# fall back to if 3.8 disappoints; drop this line once 3.8 has proven itself.
+qwen3.6:27b-nvfp4
+
+# Coding-tuned MoE — used by the CLI agent paths (late-cli / qwen-code).
+qwen3.6:35b-a3b-coding-nvfp4
+
+# Second-opinion model; different family, useful when Qwen is confidently wrong.
+gemma4:26b-mlx

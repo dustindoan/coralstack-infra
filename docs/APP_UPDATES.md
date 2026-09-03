@@ -14,6 +14,13 @@
 > box/data-path service — see the note below); deploy stays manual-on-box, so
 > sovereignty of the *data path* is unaffected.
 
+> **Update (2026-09-03):** Renovate's reach now extends past container images.
+> The Mac mini's Ollama version is pinned in `host/mac-mini/versions.env` and
+> watched via a `customManagers` regex + the `github-releases` datasource — the
+> mini is headless, so Ollama's own menu-bar updater can never apply itself
+> there and a PR is the *only* signal a release exists. See
+> [MAC_MINI.md](MAC_MINI.md).
+
 > Original framing below. Frames how CoralStack
 > should stay current without breaking a family's photo/password infrastructure,
 > and where a local AI agent (lettabot) does and doesn't belong. Relates to the
@@ -60,7 +67,7 @@ small, high-value PR and the foundation for everything below.
 
 | Tool | What it does | Fit |
 |---|---|---|
-| **Renovate** | Watches image tags in compose files, opens **PRs** to bump them (with changelog links) | ✅ **Best fit** — slots directly into the existing branch→PR→merge→deploy flow; human stays in control |
+| **Renovate** | Watches image tags in compose files — and, via a custom manager, the Mac mini's Ollama pin — opening **PRs** to bump them (with changelog links) | ✅ **Best fit** — slots directly into the existing branch→PR→merge→deploy flow; human stays in control |
 | Diun / What's-Up-Docker | Notify-only (new tag available) | OK lightweight alternative; no PR, you act manually |
 | **Watchtower** | Auto-pulls + restarts containers | ❌ **Not for this stack** — blind auto-restart of stateful services (Vaultwarden, Ente/Postgres) risks a bad release or mid-migration corruption |
 

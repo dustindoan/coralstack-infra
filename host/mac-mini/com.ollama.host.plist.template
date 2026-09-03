@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- CoralStack: sets Ollama's env at every login. See docs/MAC_MINI.md.
+     __HOME__ is substituted by install.sh — launchd does not expand $HOME.
+     A single plist can't carry multiple commands, hence the script indirection. -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key><string>com.ollama.host</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>/bin/zsh</string>
+      <string>__HOME__/Library/LaunchAgents/com.ollama.host.sh</string>
+    </array>
+    <key>RunAtLoad</key><true/>
+  </dict>
+</plist>

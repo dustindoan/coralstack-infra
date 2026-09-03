@@ -8,7 +8,22 @@
   "labels": ["dependencies"],
   "prConcurrentLimit": 5,
   "minimumReleaseAge": "3 days",
+  "customManagers": [
+    {
+      "description": "The Mac mini's Ollama version. It is a shell-style pin in host/mac-mini/versions.env, not an image tag in a compose file, so Renovate needs to be told where to look. The mini is headless and Ollama's own updater needs a menu-bar click, so a PR here is the ONLY thing that surfaces a new release — see docs/MAC_MINI.md.",
+      "customType": "regex",
+      "managerFilePatterns": ["/^host/mac-mini/versions\\.env$/"],
+      "matchStrings": ["# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s+OLLAMA_VERSION=(?<currentValue>\\S+)"],
+      "versioningTemplate": "semver"
+    }
+  ],
   "packageRules": [
+    {
+      "description": "Ollama on the Mac mini. Applying a bump replaces /Applications/Ollama.app on a running host, so it is never automatic — the PR is the notification, `host/mac-mini/install.sh --upgrade-ollama` is the act. Low stakes though: the mini is AI-chat-only, nothing else depends on it (HARDWARE_FAILURE.md).",
+      "matchPackageNames": ["ollama/ollama"],
+      "labels": ["dependencies", "mac-mini"],
+      "extractVersion": "^v(?<version>.*)$"
+    },
     {
       "description": "Stateful / identity-critical services: never batch, call them out loudly. A bad update here is a trust event — read the release notes before merging, snapshot/backup before deploying.",
       "matchPackageNames": [

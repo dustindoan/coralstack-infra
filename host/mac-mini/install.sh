@@ -53,28 +53,56 @@ if (( UPGRADE )); then
 		rm -rf "$tmp/unpacked"
 		url="https://github.com/ollama/ollama/releases/download/v${want}/Ollama-darwin.zip"
 
-		# ~190MB, and GitHub's release-asset CDN is BOTH slow and stall-prone to
-		# this box: measured 350 KB/s against 5.1 MB/s from speed.cloudflare.com
-		# on the same link, with transfers dying mid-stream ("(18) Transferred a
-		# partial file") or hanging outright. The link is not the problem; that
-		# CDN is. Hence all three flags:
-		#   --speed-limit/--speed-time  abort a transfer stuck under 10 KB/s for
-		#                               30s, instead of hanging for ten minutes
-		#   --retry-all-errors          curl's default retry list excludes the
-		#                               errors we actually hit
-		#   -C -                        resume, so each retry continues rather
-		#                               than restarting from zero
-		# Expect this to take several minutes and several attempts. That is
-		# normal here, not a fault.
-		log "Downloading $url (slow CDN — expect a few minutes and some retries)"
-		curl -fL --progress-bar --retry 10 --retry-all-errors --retry-delay 3 \
-			--speed-limit 10000 --speed-time 30 \
-			-C - -o "$tmp/Ollama.zip" "$url" || die "download failed — re-run to resume from where it stopped"
+		# CHUNKED, BECAUSE A SINGLE LONG STREAM DOES NOT SURVIVE THIS PATH.
+		# Measured from the mini, same interface, back to back:
+		#   speed.cloudflare.com, one stream ....... 5.1  MB/s
+		#   GitHub asset, one long stream .......... 0.35 MB/s, stalls dead
+		#   GitHub asset, 8MB ranged request ....... 5.5  MB/s
+		# So neither the link nor the CDN is slow — sustained single connections
+		# to it degrade and then wedge. Short ranged requests do not.
+		#
+		# This also fixes resume, which `curl -C -` could NOT do here: each retry
+		# re-requests the github.com URL, gets a FRESH signed redirect to
+		# release-assets.githubusercontent.com, and that new URL answers 200 rather
+		# than 206 — so curl truncated the output file to zero and started over,
+		# every time, forever. Fetching explicit ranges sidesteps the whole problem:
+		# each chunk follows its own redirect, and progress lands in .part on disk.
+		log "Downloading $url (chunked)"
+		CHUNK=8000000
+		part="$tmp/Ollama.zip.part"
 
-		# A resumed transfer that ends early still exits 0 sometimes. Check the
-		# archive is whole before trusting anything inside it.
-		size="$(stat -f %z "$tmp/Ollama.zip" 2>/dev/null || echo 0)"
-		(( size > 50000000 )) || die "downloaded archive is only ${size} bytes — truncated, re-run to resume"
+		total="$(curl -fsIL -m 30 "$url" | tr -d '\r' | awk 'tolower($1)=="content-length:"{n=$2} END{print n}')"
+		[[ "$total" =~ ^[0-9]+$ ]] || die "could not determine the download size (content-length missing)"
+
+		start=0
+		[[ -f "$part" ]] && start="$(stat -f %z "$part" 2>/dev/null || echo 0)"
+		(( start > total )) && { rm -f "$part"; start=0; }   # stale/corrupt partial
+		(( start > 0 )) && log "resuming at $((start / 1000000))MB"
+
+		while (( start < total )); do
+			stop=$(( start + CHUNK - 1 ))
+			(( stop >= total )) && stop=$(( total - 1 ))
+
+			# Require 206. A 200 here means the server ignored the Range and is
+			# sending the WHOLE file, which appended to .part would silently produce
+			# a corrupt archive that still unzips far enough to look plausible.
+			code="$(curl -fL -s -m 120 --retry 5 --retry-all-errors --retry-delay 2 \
+				-r "${start}-${stop}" -o "$tmp/chunk" -w '%{http_code}' "$url" || echo 000)"
+			[[ "$code" == 206 ]] || die "chunk at byte $start returned HTTP $code (expected 206) — re-run to resume"
+
+			got="$(stat -f %z "$tmp/chunk" 2>/dev/null || echo 0)"
+			(( got == stop - start + 1 )) || die "chunk at byte $start was $got bytes, expected $(( stop - start + 1 )) — re-run to resume"
+
+			cat "$tmp/chunk" >> "$part"
+			rm -f "$tmp/chunk"
+			start=$(( start + got ))
+			printf '\r[mini-install] %s / %s MB' "$((start / 1000000))" "$((total / 1000000))"
+		done
+		echo
+
+		size="$(stat -f %z "$part" 2>/dev/null || echo 0)"
+		(( size == total )) || die "assembled $size bytes, expected $total — re-run to resume"
+		mv "$part" "$tmp/Ollama.zip"
 
 		ditto -x -k "$tmp/Ollama.zip" "$tmp/unpacked" || die "unzip failed (archive corrupt? delete it and re-run)"
 		[[ -d "$tmp/unpacked/Ollama.app" ]] || die "no Ollama.app in the downloaded archive"

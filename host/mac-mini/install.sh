@@ -45,13 +45,38 @@ if (( UPGRADE )); then
 		log "Ollama already at $want — nothing to do"
 	else
 		log "Upgrading Ollama $have → $want"
-		tmp="$(mktemp -d)"
-		trap 'rm -rf "$tmp"' EXIT
+		# NOT mktemp -d: `curl -C -` can only resume if the partial file is still
+		# there next run, and a temp dir wiped on EXIT defeats that. This cache
+		# survives a failed attempt so a re-run picks up where it stopped.
+		tmp="$STATE/downloads"
+		mkdir -p "$tmp"
+		rm -rf "$tmp/unpacked"
 		url="https://github.com/ollama/ollama/releases/download/v${want}/Ollama-darwin.zip"
 
-		log "Downloading $url"
-		curl -fL --progress-bar -o "$tmp/Ollama.zip" "$url" || die "download failed"
-		ditto -x -k "$tmp/Ollama.zip" "$tmp/unpacked" || die "unzip failed"
+		# ~190MB, and GitHub's release-asset CDN is BOTH slow and stall-prone to
+		# this box: measured 350 KB/s against 5.1 MB/s from speed.cloudflare.com
+		# on the same link, with transfers dying mid-stream ("(18) Transferred a
+		# partial file") or hanging outright. The link is not the problem; that
+		# CDN is. Hence all three flags:
+		#   --speed-limit/--speed-time  abort a transfer stuck under 10 KB/s for
+		#                               30s, instead of hanging for ten minutes
+		#   --retry-all-errors          curl's default retry list excludes the
+		#                               errors we actually hit
+		#   -C -                        resume, so each retry continues rather
+		#                               than restarting from zero
+		# Expect this to take several minutes and several attempts. That is
+		# normal here, not a fault.
+		log "Downloading $url (slow CDN — expect a few minutes and some retries)"
+		curl -fL --progress-bar --retry 10 --retry-all-errors --retry-delay 3 \
+			--speed-limit 10000 --speed-time 30 \
+			-C - -o "$tmp/Ollama.zip" "$url" || die "download failed — re-run to resume from where it stopped"
+
+		# A resumed transfer that ends early still exits 0 sometimes. Check the
+		# archive is whole before trusting anything inside it.
+		size="$(stat -f %z "$tmp/Ollama.zip" 2>/dev/null || echo 0)"
+		(( size > 50000000 )) || die "downloaded archive is only ${size} bytes — truncated, re-run to resume"
+
+		ditto -x -k "$tmp/Ollama.zip" "$tmp/unpacked" || die "unzip failed (archive corrupt? delete it and re-run)"
 		[[ -d "$tmp/unpacked/Ollama.app" ]] || die "no Ollama.app in the downloaded archive"
 
 		# Verify the signature BEFORE putting it in /Applications. A tampered or
@@ -76,6 +101,9 @@ if (( UPGRADE )); then
 		open -a Ollama
 		sleep 5
 		log "Now: $(/usr/local/bin/ollama --version 2>&1 | head -1)"
+
+		# Only now is the resume cache dead weight — 190MB of it.
+		rm -rf "$tmp/Ollama.zip" "$tmp/unpacked"
 	fi
 fi
 

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- CoralStack: reconcile the mini's declared model set daily.
+     __HOME__ is substituted by install.sh. See docs/MAC_MINI.md.
+
+     06:35 sits between the apps-VM SMART run (06:20) and the Proxmox host run
+     (06:50), for the same reason those are offset: two alerts about one power
+     event shouldn't land together looking like one bigger problem.
+
+     RunAtLoad is deliberately FALSE. A login happens after every power cut, and
+     a reboot is exactly when you don't want an unattended multi-GB pull racing
+     the rest of the stack coming back up. The daily run is soon enough. -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key><string>com.coralstack.ollama-reconcile</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>/bin/bash</string>
+      <string>__HOME__/.coralstack/ollama-reconcile.sh</string>
+      <string>--apply</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>OLLAMA_RECONCILE_ENV</key><string>__HOME__/.coralstack/ollama.env</string>
+    </dict>
+    <key>StartCalendarInterval</key>
+    <dict>
+      <key>Hour</key><integer>6</integer>
+      <key>Minute</key><integer>35</integer>
+    </dict>
+    <key>RunAtLoad</key><false/>
+    <key>StandardOutPath</key><string>__HOME__/.coralstack/logs/ollama-reconcile.log</string>
+    <key>StandardErrorPath</key><string>__HOME__/.coralstack/logs/ollama-reconcile.log</string>
+  </dict>
+</plist>

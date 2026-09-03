@@ -1,5 +1,8 @@
 .env
 services/*/.env
+# The mini's reconcile config normally lives at ~/.coralstack/ollama.env, but
+# running the script straight from a checkout would create it here.
+host/mac-mini/ollama.env
 services/*/*.ovpn
 docker-compose.override.yml
 data/

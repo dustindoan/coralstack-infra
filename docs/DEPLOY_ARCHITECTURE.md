@@ -9,6 +9,15 @@
 
 ## The problem this solves
 
+> **"The box" is singular throughout this doc — and that is a real gap, not a
+> simplification.** CoralStack runs on two machines. Everything below describes
+> the NUC (Proxmox → apps VM). The Mac mini, which serves inference to Open
+> WebUI, is in none of it: no pinned versions, no Renovate, no drift check, no
+> deploy primitive. That omission let its Ollama sit three minor versions behind
+> from June to September until a model pull failed. See
+> [MAC_MINI.md](MAC_MINI.md), which declares that host and adds it to the build
+> plan below as steps of its own.
+
 [APP_UPDATES.md](APP_UPDATES.md) closed the *detection* half of staying current:
 [Renovate](https://github.com/apps/renovate) watches the pinned image tags and
 opens bump PRs into the repo. But detection only reaches `main`. Two gaps remain
@@ -169,6 +178,9 @@ and the admin-panel action surface already shipped for the Ente deletion queue.
 
 - [APP_UPDATES.md](APP_UPDATES.md) — the *detection* half (Renovate). This doc is
   the *deployment* half. Together they're the full update loop.
+- [MAC_MINI.md](MAC_MINI.md) — the second host, which this doc's model does not
+  cover. Same pull-never-push line, held one notch tighter for anything that
+  rewrites an executable.
 - [BACKUPS.md](BACKUPS.md) — the way back. Hard prerequisite for a safe deploy
   primitive.
 - The admin agent design note —

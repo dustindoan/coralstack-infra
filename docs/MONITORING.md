@@ -115,7 +115,7 @@ after a rebuild — AutoKuma puts them back.
 | Ente (web) | HTTP | `http://ente-web:3000` |
 | Jellyfin | HTTP | `http://jellyfin:8096/health` |
 | Open WebUI | HTTP | `http://open-webui:8080` |
-| Edge (public TLS) | HTTP | `https://id.${BASE_DOMAIN}` — the only one exercising DNS → eero → OPNsense → Caddy → TLS, so also the noisiest |
+| Edge TLS (Caddy, in-network) | HTTP | `https://id.${BASE_DOMAIN}` — **resolves internally to Caddy, does not leave the bridge.** See below |
 | Nightly backup | Push | dead-man's-switch |
 | SMART (apps VM) | Push | dead-man's-switch |
 | SMART (Proxmox host) | Push | dead-man's-switch |
@@ -259,6 +259,63 @@ The rule this encodes isn't "never commit on the box" — during a live incident
 the box is often the only place the diagnosis can happen. It's **"if you commit
 on the box, push before you close the session."**
 
+#### The edge monitor never tested the edge
+
+**Measured 2026-09-04.** This monitor was described — in its own `.toml` and in
+the table above — as the one exercising the whole chain: DNS, the eero forward,
+OPNsense NAT, Caddy, TLS. It does none of that.
+
+Caddy carries every vhost as a **docker network alias** (the `aliases:` block in
+the root `docker-compose.yml`). That is deliberate and correct: it lets
+inter-service calls using the public FQDN — Jellyfin's SSO plugin fetching
+`id.${BASE_DOMAIN}/.well-known/openid-configuration`, say — resolve internally
+instead of hairpinning out through the eero and back. Uptime Kuma sits on that
+same network. So `https://id.${BASE_DOMAIN}` from Kuma resolves straight to
+Caddy's container IP and the probe never leaves the bridge.
+
+Confirmed by `getent hosts id.${BASE_DOMAIN}` inside the Kuma container
+returning Caddy's container address. The monitor's claim contradicted a
+deliberate design documented thirty lines away in the same repo.
+
+It is still worth having — it catches "Caddy is down", "Caddy stopped routing
+this SNI", and "the certificate no longer validates". It is just not an edge
+check, and the honest consequence is that **§4 below has never had a stand-in.
+Nothing has ever tested the public path.**
+
+#### Caddy recreation gives this monitor a false DOWN
+
+Also measured 2026-09-04, deploying a Caddy rebuild. Caddy came back on a new
+container IP; Kuma kept probing the old one — which docker had by then
+**reassigned to another container** (`music-ingest`). The monitor was not merely
+failing, it was probing an unrelated service. Docker's own DNS was correct
+throughout; whether Kuma held a cached resolution or a pooled keep-alive socket
+was not isolated, and the remedy is the same either way.
+
+It did not self-heal in five minutes; it went DOWN and fired a real
+notification. The fix:
+
+```bash
+docker compose restart uptime-kuma
+docker compose restart autokuma   # NOT optional — see below
+```
+
+The second command is mandatory. Restarting Kuma is exactly what left AutoKuma
+disconnected for two hours on 2026-08-30, and it reproduced here: `You are not
+logged in` every five seconds, container still `Up`, every monitor still green.
+Confirm recovery by checking that `autokuma.db/db`'s mtime is a few seconds old.
+
+**Fail-closed, not fail-open** — worth stating, because the alternative would be
+serious. The recycled IP has to actually answer on 443 to produce a false
+*green*, and nothing else in the stack listens there. Today this costs false
+alarms, not false confidence. That stops being true the moment another container
+binds 443.
+
+The durable fix is to stop Caddy's container IP from moving — an `ipam` subnet
+on the network plus a fixed `ipv4_address` for Caddy. It is not applied here
+because docker cannot change a network's IPAM in place: the network has to be
+recreated, which means taking the whole stack down. That is a deliberate
+maintenance window, not a side effect of a monitoring fix.
+
 ### 4. An external check — the one that catches a dead box
 
 Everything above runs **on the machine it is monitoring**. If the NUC dies,
@@ -309,6 +366,10 @@ restart your browser." That's the line
 Stated explicitly, because a monitoring doc that only lists wins is how you end
 up believing you have coverage you don't.
 
+- **Nothing tests the public path.** The monitor that claimed to was resolving
+  internally the whole time (measured 2026-09-04, above). Step 4 is not a
+  nice-to-have on top of existing edge coverage — it is the *only* edge
+  coverage, and it does not exist yet.
 - **Kuma cannot alert you that Kuma is down** — until you do step 4 above.
   It runs on the apps VM, on the NUC; if the NUC dies, the monitoring dies with
   it and you find out from a family member, not a notification. Everything else

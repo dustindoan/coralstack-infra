@@ -84,6 +84,21 @@ this is the one piece of config whose silent breakage means every other alert
 goes nowhere. Monitors are declarative; the channel that carries them is worth
 clicking once and testing.
 
+> **On this host: done.** Read from Kuma's DB on 2026-09-04 — one channel,
+> type `ntfy`, `https://ntfy.sh`, auth `none`, active, **is_default set**, and
+> attached to all 11 monitors. Because it is the default, monitors AutoKuma
+> creates later inherit it, which is what makes a new `.toml` land alerted
+> rather than silent.
+>
+> Two things worth knowing about how it is tuned. **Both priorities are 5** —
+> ntfy's maximum, which bypasses Do Not Disturb — and that includes the
+> *recovery* notification, so a flapping monitor pages you urgently twice per
+> flap. The Edge (public TLS) monitor did exactly that on 2026-08-30, twice in
+> one evening. Consider dropping the up-priority; a monitor you mute is a
+> monitor you don't have. And **the topic is the only credential** — ntfy.sh
+> with auth `none` means anyone who learns it can both read your alerts and
+> publish fake ones, so treat it like a push token (Tier-2, Vaultwarden).
+
 ### 2 & 3. The monitors — declared in this repo, not clicked
 
 **These are config-as-code.** [services/autokuma/monitors/](../services/autokuma/monitors/)

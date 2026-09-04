@@ -157,7 +157,9 @@ if [[ -f "$STATE/ollama.env" ]]; then
 else
 	install -m 0600 "$HERE/ollama.env.example" "$STATE/ollama.env"
 	log "Wrote $STATE/ollama.env from the example — EDIT IT NOW:"
-	log "  HEALTHCHECK_URL must be the Uptime Kuma push URL, or you get no alerts"
+	log "  HEALTHCHECK_URL must be the Uptime Kuma push URL, or you get no alerts."
+	log "  It is the PUBLIC https://status.<domain>/api/push/<token> form, printed"
+	log "  as step 6 of setup.sh on the apps VM (OLLAMA_MINI_PUSH_TOKEN)."
 fi
 
 log "Installing the reconcile LaunchAgent (daily 06:35)"

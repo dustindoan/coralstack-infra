@@ -229,6 +229,7 @@ if [[ -f services/autokuma/.env ]]; then
 	fill_secret services/autokuma/.env SMART_APPS_PUSH_TOKEN "$(gen_push_token)"
 	fill_secret services/autokuma/.env SMART_HOST_PUSH_TOKEN "$(gen_push_token)"
 	fill_secret services/autokuma/.env DRIFT_PUSH_TOKEN       "$(gen_push_token)"
+	fill_secret services/autokuma/.env OLLAMA_MINI_PUSH_TOKEN "$(gen_push_token)"
 
 	# shellcheck disable=SC1091
 	set -a; source services/autokuma/.env; set +a
@@ -276,7 +277,7 @@ if [[ -f services/autokuma/.env ]]; then
 	for f in services/autokuma/monitors/*.toml.template; do
 		[[ -e "$f" ]] || continue
 		out="$autokuma_out/$(basename "$f" .template)"
-		envsubst '$BASE_DOMAIN $BACKUP_PUSH_TOKEN $SMART_APPS_PUSH_TOKEN $SMART_HOST_PUSH_TOKEN $DRIFT_PUSH_TOKEN' \
+		envsubst '$BASE_DOMAIN $BACKUP_PUSH_TOKEN $SMART_APPS_PUSH_TOKEN $SMART_HOST_PUSH_TOKEN $DRIFT_PUSH_TOKEN $OLLAMA_MINI_PUSH_TOKEN' \
 			< "$f" > "$out"
 		rendered=$((rendered + 1))
 	done
@@ -487,9 +488,10 @@ Next steps:
         This step is manual on purpose, and nothing else alerts without it.
 EOF
 
-# The Proxmox host runs the SMART check outside this compose, so its push URL
-# can't be written to a file from here. Surface it rather than making the admin
-# go digging in services/autokuma/.env for a value they don't know exists.
+# Two hosts run their checks outside this compose — the Proxmox hypervisor and
+# the Mac mini — so their push URLs can't be written to a file from here.
+# Surface them rather than making the admin go digging in
+# services/autokuma/.env for a value they don't know exists.
 if [[ -n "${SMART_HOST_PUSH_TOKEN:-}" ]]; then
 	cat <<EOF
 
@@ -500,5 +502,19 @@ if [[ -n "${SMART_HOST_PUSH_TOKEN:-}" ]]; then
 
      The public URL, not the container name — the host isn't on the coralstack
      docker network, so it hairpins back through the eero.
+EOF
+fi
+
+if [[ -n "${OLLAMA_MINI_PUSH_TOKEN:-}" ]]; then
+	cat <<EOF
+
+  6. On the MAC MINI (not this VM), run host/mac-mini/install.sh and set
+     HEALTHCHECK_URL in ~/.coralstack/ollama.env to:
+
+       https://status.${BASE_DOMAIN}/api/push/${OLLAMA_MINI_PUSH_TOKEN}
+
+     Public URL again, and for the same reason. Until this is set the mini's
+     daily reconcile still runs and still exits non-zero — but nothing is
+     listening, so a lagging Ollama or a missing model reaches nobody.
 EOF
 fi

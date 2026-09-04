@@ -19,6 +19,7 @@ lands) · [RECOVERY.md](RECOVERY.md) (power loss) · [BACKUPS.md](BACKUPS.md).
 | **SMART (apps VM)** | `services/smart/` container | The TerraMaster — the disk with the photo blobs | Pushes up/down **with the reason** to a Kuma Push monitor |
 | **SMART (Proxmox host)** | `services/smart/host/`, systemd timer | The NUC's internal SATA SSD — Proxmox + both VMs' disks | Same, via the public `status.` URL |
 | **Deploy drift** | `services/drift/` container | That the box's checkout matches the repo — right branch, nothing uncommitted, nothing unpushed | Pushes up/down **with the reason** to a Kuma Push monitor |
+| **Ollama reconcile (Mac mini)** | `host/mac-mini/`, launchd timer | That the inference host matches the repo — version pin, declared models, the LaunchAgent env | Same, via the public `status.` URL |
 | **AutoKuma** | `services/autokuma/` | Nothing — it *declares* the monitor set, reconciling Kuma against `.toml` files in this repo | n/a |
 
 Two SMART runners is not redundancy, it's coverage: **the apps VM physically
@@ -103,6 +104,7 @@ after a rebuild — AutoKuma puts them back.
 | SMART (apps VM) | Push | dead-man's-switch |
 | SMART (Proxmox host) | Push | dead-man's-switch |
 | Deploy drift (apps VM) | Push | dead-man's-switch |
+| Ollama reconcile (Mac mini) | Push | dead-man's-switch |
 
 To change the monitor set, edit a file and redeploy. To add one, drop in a new
 `.toml`. **Keep filenames stable** — the filename is AutoKuma's ID for the
@@ -116,7 +118,7 @@ so `setup.sh` generates it first and wires both ends — the monitor definition
 *and* `HEALTHCHECK_URL` in [services/backup/.env](../services/backup/.env.example)
 and [services/smart/.env](../services/smart/.env.example). Nothing to copy.
 
-Two things to know:
+Some things to know:
 
 - The token format is enforced: **exactly 32 characters, letters and digits**.
   A malformed one is not a loud failure — AutoKuma skips the monitor and logs a
@@ -129,6 +131,16 @@ Two things to know:
 - `setup.sh` fills `HEALTHCHECK_URL` only when it is **blank**. If you've
   pointed one at healthchecks.io or elsewhere deliberately, it says so and
   leaves it alone rather than overwriting your choice.
+- **Two hosts are wired by hand, and that isn't a hole in the automation.**
+  The Proxmox hypervisor and the Mac mini are not on the coralstack docker
+  network, so `http://uptime-kuma:3001` doesn't resolve there and `setup.sh`
+  has no file on those boxes to write into. It prints the public
+  `https://status.${BASE_DOMAIN}/api/push/<token>` form at the end of its run
+  instead — steps 5 and 6 — to be pasted into `/etc/coralstack/smart.env` and
+  `~/.coralstack/ollama.env`. **Leaving one blank fails quietly:** the check
+  still runs and still exits non-zero on the box, but nothing is listening, so
+  the finding reaches nobody and the monitor lapses into "no heartbeat" rather
+  than naming the problem.
 
 #### ⚠️ AutoKuma's `/data` volume is load-bearing
 

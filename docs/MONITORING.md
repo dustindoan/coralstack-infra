@@ -287,9 +287,23 @@ Nothing has ever tested the public path.**
 Also measured 2026-09-04, deploying a Caddy rebuild. Caddy came back on a new
 container IP; Kuma kept probing the old one — which docker had by then
 **reassigned to another container** (`music-ingest`). The monitor was not merely
-failing, it was probing an unrelated service. Docker's own DNS was correct
-throughout; whether Kuma held a cached resolution or a pooled keep-alive socket
-was not isolated, and the remedy is the same either way.
+failing, it was probing an unrelated service.
+
+**Docker's DNS is not the culprit.** `getent hosts` inside the Kuma container
+returns the correct address on every retry, and container IPs genuinely recycle
+— across two deploys the same address moved Caddy → `music-ingest` → Caddy →
+`qobuz-poll`. There is a lag of a few seconds right after a recreation where
+docker's embedded DNS still answers with the old address; that converges on its
+own and is a red herring if you catch it mid-window.
+
+The evidence points at **long-lived connection state inside Kuma**, not
+resolution. The flap happened to a Kuma that had been running four days. The
+very next Caddy recreation, against a Kuma restarted eight minutes earlier, did
+not flap at all — same churn, same aliases, no alert. That is the signature of a
+pooled keep-alive socket pinned to the pre-recreation address, and it predicts
+when this bites: **the longer Kuma has been up, the more likely a Caddy
+recreation pages you.** Not isolated to the exact mechanism, but the remedy is
+unchanged.
 
 It did not self-heal in five minutes; it went DOWN and fired a real
 notification. The fix:

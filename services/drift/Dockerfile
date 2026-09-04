@@ -12,7 +12,7 @@
 # Base = alpine: this container has no relationship to any service's data. It
 # mounts the deploy checkout READ-ONLY and holds no credentials — `git
 # ls-remote` against a public repo is anonymous.
-FROM alpine:3.21
+FROM alpine:3.24
 
 # https://github.com/aptible/supercronic/releases
 ARG SUPERCRONIC_VERSION=v0.2.33

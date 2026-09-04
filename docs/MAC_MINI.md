@@ -139,6 +139,23 @@ an Uptime Kuma push monitor, and exits non-zero on any finding so a manual run
 reports through its exit status too. If the script stops running entirely, the
 heartbeat lapses and Kuma alerts on that instead — both failure modes covered.
 
+**The monitor is declared, not clicked.** It lives at
+[services/autokuma/monitors/ollama-mac-mini.toml.template](../services/autokuma/monitors/ollama-mac-mini.toml.template)
+with its push token pinned by `setup.sh`, exactly like the SMART and drift
+monitors. What is *not* automated is the last hop: the mini is not on the apps
+VM's docker network, so `setup.sh` cannot write the URL into a file over here.
+It prints the public form as **step 6** of its run —
+`https://status.<BASE_DOMAIN>/api/push/<OLLAMA_MINI_PUSH_TOKEN>` — and that
+goes into `~/.coralstack/ollama.env` by hand. Same shape as the Proxmox host's
+SMART runner, for the same reason.
+
+> **A blank `HEALTHCHECK_URL` is the quiet failure mode here**, and it was the
+> state this box shipped in. The reconcile still runs at 06:35, still finds a
+> lagging Ollama or a missing model, still exits non-zero — into a log nobody
+> reads. Everything above only works once that line is filled in. Fill it, then
+> prove it: `bash ~/.coralstack/ollama-reconcile.sh` and watch the monitor in
+> Kuma go green. An untested push URL is a guess.
+
 > **The known blind spot stays known.** Kuma runs on the NUC, so the NUC cannot
 > alert on its own death — MONITORING.md says so, and notes the mini doesn't
 > count as an external watcher because nothing on it was watching. This work

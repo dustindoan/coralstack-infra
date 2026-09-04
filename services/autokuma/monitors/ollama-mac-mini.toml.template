@@ -1,0 +1,17 @@
+# Ollama reconcile on the MAC MINI — is the inference host running what the
+# repo says? Pushes status=down WITH the reason (version skew against the pin,
+# a missing declared model, the Login-Item env race), so the alert names the
+# problem. See docs/MAC_MINI.md and host/mac-mini/ollama-reconcile.sh.
+#
+# The mini is NOT on the coralstack docker network, so unlike the other push
+# monitors its heartbeat arrives via the public status URL and hairpins back
+# through the eero. setup.sh prints that URL; it is pasted into the mini's
+# ~/.coralstack/ollama.env by hand.
+#
+# 48h heartbeat against a daily 06:35 check: one missed run is tolerated, two
+# is a finding. Same tolerance as the SMART and drift monitors.
+type = "push"
+name = "Ollama reconcile (Mac mini)"
+push_token = "${OLLAMA_MINI_PUSH_TOKEN}"
+interval = 172800
+max_retries = 0

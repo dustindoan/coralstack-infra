@@ -47,7 +47,7 @@ services:
   # connections — fine for webseed grabs from the origination feed; matters
   # for seeding ratio on real swarms.
   arr-vpn:
-    image: qmcgaw/gluetun:v3.41.1
+    image: qmcgaw/gluetun:v3.41.3
     container_name: arr-vpn
     restart: unless-stopped
     cap_add:

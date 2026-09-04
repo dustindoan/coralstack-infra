@@ -72,8 +72,9 @@ Without one, none of the rest alerts anybody.
 **Settings → Notifications → Setup Notification.** Pick something that reaches
 a phone. Options that need no third-party account: **ntfy** (`ntfy.sh` with a
 private random topic, or self-hosted later), or SMTP if you already have a
-relay. Then **enable it as the default** so new monitors inherit it, and tick
-it on every monitor you create below.
+relay. Then **enable it as the default** and tick it on every monitor you
+create below. Be aware that "default" only reaches monitors created *through
+Kuma's own UI* — one built by AutoKuma is not covered, which is measured below.
 
 Test it with Kuma's own Test button before trusting it. An untested
 notification channel is the same as no notification channel.
@@ -86,9 +87,9 @@ clicking once and testing.
 
 > **On this host: done.** Read from Kuma's DB on 2026-09-04 — one channel,
 > type `ntfy`, `https://ntfy.sh`, auth `none`, active, **is_default set**, and
-> attached to all 11 monitors. Because it is the default, monitors AutoKuma
-> creates later inherit it, which is what makes a new `.toml` land alerted
-> rather than silent.
+> attached to every monitor. Note that "is_default" does **not** carry over to
+> monitors AutoKuma creates — see the measured finding under *Deploy drift*
+> below; that attachment is a manual step after every new `.toml`.
 >
 > Two things worth knowing about how it is tuned. **Both priorities are 5** —
 > ntfy's maximum, which bypasses Do Not Disturb — and that includes the
@@ -218,9 +219,36 @@ load-bearing: nothing in this container may ever write to Kuma's state.
 > **Notification attachment is not AutoKuma's business.** Verified 2026-08-30:
 > AutoKuma reconciles the properties its `.toml` files declare and leaves
 > `monitor_notification` alone, so a channel attached in the UI survives its
-> syncs. Ticking **Default enabled** additionally means any monitor AutoKuma
-> creates in future inherits the channel — worth doing, because otherwise a new
-> `.toml` lands unalerted.
+> syncs.
+>
+> **The other half of this note was wrong, and it mattered.** It claimed that
+> ticking **Default enabled** additionally means any monitor AutoKuma creates
+> inherits the channel. **Measured 2026-09-04 and false.** Deploying
+> `ollama-mac-mini.toml` created monitor #12 with the channel active and
+> `is_default` set, and it landed with **zero** notifications attached — while
+> all 11 monitors that predated it were attached. Kuma's "default enabled" is a
+> *frontend* convenience: its own UI pre-ticks the box when a human opens the
+> new-monitor form. AutoKuma builds the payload itself and sends no
+> notification list, so nothing is attached.
+>
+> The 11 attached monitors are not evidence against this — they were almost
+> certainly attached in one go by the notification's **Apply on all existing
+> monitors** checkbox, which is a different mechanism.
+>
+> **So every new `.toml` lands unalerted, and looks perfectly healthy doing
+> it** — green monitor, real heartbeats, no route to a phone. Until AutoKuma
+> also manages the notification (its `notification_name_list` references
+> *AutoKuma-managed* notifications only, and that support is the experimental
+> one this repo deliberately avoids), **adding a monitor is a two-step
+> operation**:
+>
+> 1. Add the `.toml`, deploy, confirm the monitor appears.
+> 2. In Kuma, attach the channel — either tick it on the new monitor, or edit
+>    the notification and use **Apply on all existing monitors**, which also
+>    sweeps up anything previously missed.
+>
+> Worth auditing periodically: a monitor with no notification is invisible in
+> the dashboard, because it looks exactly like a working one.
 
 It is **read-only by construction** — it never fetches, checks out, or pushes.
 It reads local git state and asks origin a single `git ls-remote` question

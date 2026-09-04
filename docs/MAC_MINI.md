@@ -152,9 +152,13 @@ SMART runner, for the same reason.
 > **A blank `HEALTHCHECK_URL` is the quiet failure mode here**, and it was the
 > state this box shipped in. The reconcile still runs at 06:35, still finds a
 > lagging Ollama or a missing model, still exits non-zero — into a log nobody
-> reads. Everything above only works once that line is filled in. Fill it, then
-> prove it: `bash ~/.coralstack/ollama-reconcile.sh` and watch the monitor in
-> Kuma go green. An untested push URL is a guess.
+> reads. Everything above only works once that line is filled in.
+>
+> **Wired and proven 2026-09-04:** the URL is set, a manual run pushed
+> `status=up`, and Kuma monitor #12 recorded
+> `mac-mini: ollama in sync with the repo`. Note `python3` is unusable on this
+> box — it triggers the Xcode CLT installer — so edit that file with `sed`, not
+> a Python one-liner.
 
 > **The known blind spot stays known.** Kuma runs on the NUC, so the NUC cannot
 > alert on its own death — MONITORING.md says so, and notes the mini doesn't
@@ -167,10 +171,11 @@ SMART runner, for the same reason.
 1. ✅ **Declare the mini** — `host/mac-mini/` with versions, models, LaunchAgent,
    and the Renovate custom manager. *(this change)*
 2. ✅ **Reconcile script + launchd timer** — written. *(this change)*
-3. ⬜ **Install on the mini** — run `host/mac-mini/install.sh`. Nothing on the box
-   has changed yet.
-4. ⬜ **Upgrade Ollama 0.30.10 → 0.33.3** and pull `qwen3.8:27b-nvfp4`. The
-   deliberate human act described above; unblocks the original request.
+3. ✅ **Install on the mini** — done 2026-09-03. Agents bootstrapped, reconcile
+   timer scheduled 06:35.
+4. ✅ **Upgrade Ollama 0.30.10 → 0.33.3** and pull `qwen3.8:27b-nvfp4` — done
+   2026-09-03; the original request is closed. Confirmed 2026-09-04 by a
+   reconcile run reporting `ollama in sync with the repo`.
 5. ⬜ **Teach `services/drift/` about the mini** — today drift-check answers "is
    the apps VM running what the repo says." The same question now has a second
    host and no answer for it.

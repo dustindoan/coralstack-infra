@@ -1,0 +1,74 @@
+services:
+  # ─── Postgres ──────────────────────────────────────────────────────────────
+  # DEDICATED, not shared with Ente's. Synapse requires its database be created
+  # with C collation (LC_COLLATE/LC_CTYPE=C); getting that wrong corrupts search
+  # ordering and is only fixable by dump/restore. Rather than impose that on a
+  # database Ente also uses, Matrix gets its own instance. It holds two DBs:
+  # `synapse` and `mas`.
+  matrix-db:
+    image: postgres:15
+    container_name: matrix-db
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      POSTGRES_DB: synapse
+      POSTGRES_USER: synapse
+      POSTGRES_PASSWORD: ${MATRIX_DB_PASSWORD:?MATRIX_DB_PASSWORD must be set — run ./setup.sh}
+      # The C-collation requirement above. initdb only honours this at CREATE
+      # time, so a wrong value here is not fixable by editing it later.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=C --lc-ctype=C"
+    volumes:
+      - ${DATA_PATH:?DATA_PATH must be set — run ./setup.sh}/matrix/db:/var/lib/postgresql/data
+      # Creates the second database (mas) on first init only.
+      - ./init-mas-db.sh:/docker-entrypoint-initdb.d/10-mas.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U synapse -d synapse"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ─── Matrix Authentication Service ─────────────────────────────────────────
+  # MAS owns login, not Synapse (MSC3861). This is what makes Pocket ID SSO work
+  # and is required for Element X on mobile. NOTE THE TAG: MAS publishes
+  # `1.23.0`, with no `v` prefix — unlike synapse and element-web next to it.
+  matrix-auth:
+    image: ghcr.io/element-hq/matrix-authentication-service:1.23.0
+    container_name: matrix-auth
+    restart: unless-stopped
+    depends_on:
+      matrix-db:
+        condition: service_healthy
+    volumes:
+      - ${DATA_PATH}/matrix/mas-config.yaml:/config.yaml:ro
+      # Signing key as a file rather than inlined in the YAML — a PEM inside a
+      # templated config is a whitespace bug waiting to happen.
+      - ${DATA_PATH}/matrix/keys:/keys:ro
+    command: ["server", "--config", "/config.yaml"]
+
+  # ─── Synapse ───────────────────────────────────────────────────────────────
+  synapse:
+    image: ghcr.io/element-hq/synapse:v1.159.0
+    container_name: synapse
+    restart: unless-stopped
+    depends_on:
+      matrix-db:
+        condition: service_healthy
+      matrix-auth:
+        condition: service_started
+    environment:
+      SYNAPSE_CONFIG_PATH: /data/homeserver.yaml
+    volumes:
+      - ${DATA_PATH}/matrix/synapse:/data
+
+  # ─── Element web client ────────────────────────────────────────────────────
+  # The member-facing front door. Static webapp; it talks to Synapse and MAS
+  # from the BROWSER, which is why both need public vhosts and CORS on the
+  # apex well-known.
+  element:
+    image: ghcr.io/element-hq/element-web:v1.12.26
+    container_name: element
+    restart: unless-stopped
+    volumes:
+      - ${DATA_PATH}/matrix/element-config.json:/app/config.json:ro

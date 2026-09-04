@@ -1,0 +1,98 @@
+# Matrix Authentication Service — RENDERED by setup.sh into
+# ${DATA_PATH}/matrix/mas-config.yaml. Edit the template, not the rendered file.
+#
+# MAS owns identity for Matrix. Synapse delegates login to it (MSC3861), and MAS
+# in turn delegates to Pocket ID. So the chain is:
+#
+#   Element  →  MAS  →  Pocket ID
+#               (issues Matrix tokens)   (says who you are)
+#
+# That is one more hop than the other services in this stack, which talk to
+# Pocket ID directly. It buys Element X support on mobile and is the path
+# matrix.org itself migrated to; there is no supported way to wire Synapse
+# straight to an external OIDC provider and keep the modern mobile clients.
+
+http:
+  public_base: "https://auth.${BASE_DOMAIN}/"
+  issuer: "https://auth.${BASE_DOMAIN}/"
+  listeners:
+    - name: web
+      resources:
+        - name: discovery
+        - name: human
+        - name: oauth
+        - name: compat
+        - name: assets
+      binds:
+        - address: '[::]:8080'
+      proxy_protocol: false
+
+database:
+  uri: "postgresql://synapse:${MATRIX_DB_PASSWORD}@matrix-db:5432/mas"
+
+secrets:
+  # 64 hex chars. Encrypts sensitive columns at rest; losing it means losing
+  # every upstream-provider link and every stored session.
+  encryption: "${MATRIX_MAS_ENCRYPTION}"
+  keys:
+    # Loaded from a file rather than inlined — a PEM inside templated YAML is a
+    # whitespace bug waiting to happen. setup.sh generates it.
+    - kid: coralstack-rsa
+      key_file: /keys/rsa.pem
+
+matrix:
+  homeserver: "${BASE_DOMAIN}"
+  secret: "${MATRIX_MAS_SHARED_SECRET}"
+  endpoint: "http://synapse:8008/"
+
+clients:
+  # Synapse as an OAuth client of MAS. This was REQUIRED under the older
+  # MSC3861 wiring; with the stable `matrix_authentication_service` section
+  # Synapse authenticates with the shared secret alone, so this entry is
+  # probably vestigial. Kept deliberately: an unused client registration is
+  # harmless, a missing required one stops logins dead, and the upstream docs
+  # do not say plainly which it is.
+  - client_id: "0000000000000000000SYNAPSE"
+    client_auth_method: client_secret_basic
+    client_secret: "${MATRIX_MAS_CLIENT_SECRET}"
+
+# ─── Local passwords: OFF ────────────────────────────────────────────────────
+# Identity comes from Pocket ID and nowhere else, matching every other service
+# in the stack. This also means there is no local-account path to brute-force
+# on a public vhost.
+passwords:
+  enabled: false
+
+account:
+  # No self-service registration. Members exist because Pocket ID says so.
+  password_registration_enabled: false
+  # Let members manage their own devices/sessions, but not delete the account
+  # out from under the co-op's identity provider.
+  account_deactivation_allowed: false
+
+# ─── Upstream: Pocket ID ─────────────────────────────────────────────────────
+upstream_oauth2:
+  providers:
+    # The id is a ULID and is part of the redirect URI registered in Pocket ID:
+    #   https://auth.${BASE_DOMAIN}/upstream/callback/${MATRIX_OIDC_PROVIDER_ID}
+    # Change it and that registration silently stops matching.
+    - id: "${MATRIX_OIDC_PROVIDER_ID}"
+      issuer: "https://id.${BASE_DOMAIN}"
+      human_name: "Pocket ID"
+      client_id: "${MATRIX_OIDC_CLIENT_ID}"
+      client_secret: "${MATRIX_OIDC_CLIENT_SECRET}"
+      token_endpoint_auth_method: client_secret_post
+      scope: "openid profile email"
+      claims_imports:
+        localpart:
+          # require, not suggest: a Matrix localpart cannot be changed after the
+          # account exists, so it must come from the identity provider rather
+          # than from whatever the user types on first login.
+          action: require
+          template: "{{ user.preferred_username }}"
+        displayname:
+          action: suggest
+          template: "{{ user.name }}"
+        email:
+          action: suggest
+          template: "{{ user.email }}"

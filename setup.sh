@@ -198,6 +198,7 @@ init_service_env homepage
 init_service_env jellyfin
 init_service_env backup
 init_service_env smart
+init_service_env matrix
 init_service_env autokuma
 init_service_env drift
 
@@ -363,6 +364,75 @@ if [[ ! -f "$ente_museum_yaml" ]]; then
 	fi
 fi
 
+# ─── Matrix (Synapse + MAS + Element) ────────────────────────────────────────
+# Skipped entirely if matrix is commented out of the top-level compose.
+if grep -qE '^\s*-\s*services/matrix/' docker-compose.yml; then
+
+	# HEX, NOT base64 — unlike every other DB password in this stack, this one
+	# is interpolated into a URI (MAS takes `database.uri`), and base64's @ / +
+	# characters silently corrupt the connection string rather than failing
+	# loudly. 48 hex chars is plenty of entropy and URI-safe by construction.
+	fill_secret services/matrix/.env MATRIX_DB_PASSWORD                "$(openssl rand -hex 24)"
+	fill_secret services/matrix/.env MATRIX_MAS_CLIENT_SECRET          "$(gen_hex)"
+	fill_secret services/matrix/.env MATRIX_MAS_SHARED_SECRET            "$(gen_hex)"
+	# MAS requires EXACTLY 64 hex characters here and refuses to start otherwise.
+	fill_secret services/matrix/.env MATRIX_MAS_ENCRYPTION             "$(openssl rand -hex 32)"
+	fill_secret services/matrix/.env MATRIX_MACAROON_SECRET            "$(gen_hex)"
+	fill_secret services/matrix/.env MATRIX_FORM_SECRET                "$(gen_hex)"
+
+	mkdir -p "$DATA_PATH/matrix/synapse" "$DATA_PATH/matrix/keys" "$DATA_PATH/matrix/db"
+
+	# MAS signing key. Generated as a file because a PEM inlined into templated
+	# YAML is a whitespace bug waiting to happen.
+	if [[ ! -f "$DATA_PATH/matrix/keys/rsa.pem" ]]; then
+		log "Generating MAS signing key"
+		openssl genrsa -out "$DATA_PATH/matrix/keys/rsa.pem" 2048 2>/dev/null
+		chmod 600 "$DATA_PATH/matrix/keys/rsa.pem"
+	fi
+
+	# Synapse's federation signing key. THIS IS THE SERVER'S IDENTITY to the
+	# rest of the Matrix network — lose it and peers treat you as an impostor
+	# and rooms break. Only Synapse can generate it in the right format, so we
+	# run the image's `generate` once. It also writes a homeserver.yaml and a
+	# log.config; we keep the log.config and render our own homeserver.yaml
+	# over the top immediately below.
+	synapse_key="$DATA_PATH/matrix/synapse/${BASE_DOMAIN}.signing.key"
+	if [[ ! -f "$synapse_key" ]]; then
+		log "Generating Synapse signing key (one-shot container run)"
+		docker run --rm \
+			-v "$DATA_PATH/matrix/synapse:/data" \
+			-e SYNAPSE_SERVER_NAME="$BASE_DOMAIN" \
+			-e SYNAPSE_REPORT_STATS=no \
+			ghcr.io/element-hq/synapse:v1.159.0 generate >/dev/null
+		[[ -f "$synapse_key" ]] || die "Synapse did not produce $synapse_key — check the run above."
+	fi
+
+	# shellcheck disable=SC1091
+	set -a; source services/matrix/.env; set +a
+
+	# homeserver.yaml and mas-config.yaml are ALWAYS re-rendered. Unlike Ente's
+	# museum.yaml there is no runtime state in them — registration lockdown and
+	# the federation allowlist live in the template, so re-rendering restores
+	# the safe posture rather than destroying it. Federation peers are added by
+	# editing the template and re-running, which is the point.
+	log "Rendering Matrix configs"
+	envsubst '$DATA_PATH $BASE_DOMAIN $MATRIX_DB_PASSWORD $MATRIX_MAS_CLIENT_SECRET $MATRIX_MAS_SHARED_SECRET $MATRIX_MACAROON_SECRET $MATRIX_FORM_SECRET' \
+		< services/matrix/homeserver.yaml.template > "$DATA_PATH/matrix/synapse/homeserver.yaml"
+
+	envsubst '$DATA_PATH $BASE_DOMAIN $MATRIX_DB_PASSWORD $MATRIX_MAS_ENCRYPTION $MATRIX_MAS_SHARED_SECRET $MATRIX_MAS_CLIENT_SECRET $MATRIX_OIDC_PROVIDER_ID $MATRIX_OIDC_CLIENT_ID $MATRIX_OIDC_CLIENT_SECRET' \
+		< services/matrix/mas-config.yaml.template > "$DATA_PATH/matrix/mas-config.yaml"
+
+	envsubst '$BASE_DOMAIN' \
+		< services/matrix/element-config.json.template > "$DATA_PATH/matrix/element-config.json"
+
+	if [[ -z "${MATRIX_OIDC_CLIENT_ID:-}" || -z "${MATRIX_OIDC_CLIENT_SECRET:-}" ]]; then
+		warn "Matrix: MATRIX_OIDC_CLIENT_* not set in services/matrix/.env — MAS has no upstream identity provider, so NOBODY can log in to chat yet."
+		warn "  Create an OIDC client in Pocket ID with redirect URI:"
+		warn "    https://auth.${BASE_DOMAIN}/upstream/callback/${MATRIX_OIDC_PROVIDER_ID:-<MATRIX_OIDC_PROVIDER_ID>}"
+		warn "  then fill services/matrix/.env and re-run ./setup.sh."
+	fi
+fi
+
 # ─── Jellyfin SSO plugin (pre-seed) ──────────────────────────────────────────
 # Drop the SSO plugin into the Jellyfin config volume so it's loaded on first
 # boot. No admin-UI install required. Skip if already present or if Jellyfin
@@ -477,7 +547,18 @@ Next steps:
      (Ente Photos has no native OIDC; members onboard via email-OTT and store
      their Ente password in their Pocket-ID-SSO'd Vaultwarden vault.)
 
-  4. Monitoring — see docs/MONITORING.md:
+  4. Matrix chat — see docs/MATRIX.md:
+     a. In Pocket ID, create an OIDC client for Matrix with redirect URI:
+          https://auth.${BASE_DOMAIN}/upstream/callback/\${MATRIX_OIDC_PROVIDER_ID}
+        (the ULID is in services/matrix/.env — it must match exactly)
+     b. Put its id/secret in services/matrix/.env, then re-run ./setup.sh and:
+          docker compose up -d matrix-auth synapse element
+        Until that's done MAS has no identity provider and nobody can sign in —
+        which is the intended failure mode for a public vhost, not a bug.
+     c. Federation ships OFF (empty allowlist in homeserver.yaml.template).
+        Add sibling co-ops one line at a time; see docs/MATRIX.md.
+
+  5. Monitoring — see docs/MONITORING.md:
      a. Claim the Uptime Kuma admin account at https://status.${BASE_DOMAIN} IMMEDIATELY.
         Until you do, its setup wizard is open to whoever finds it (docs/SECURITY_PASS.md, SEC-2).
      b. Put that password in services/autokuma/.env as AUTOKUMA__KUMA__PASSWORD,
@@ -493,7 +574,7 @@ EOF
 if [[ -n "${SMART_HOST_PUSH_TOKEN:-}" ]]; then
 	cat <<EOF
 
-  5. On the PROXMOX HOST (not this VM), run services/smart/host/install.sh and set
+  6. On the PROXMOX HOST (not this VM), run services/smart/host/install.sh and set
      HEALTHCHECK_URL in /etc/coralstack/smart.env to:
 
        https://status.${BASE_DOMAIN}/api/push/${SMART_HOST_PUSH_TOKEN}

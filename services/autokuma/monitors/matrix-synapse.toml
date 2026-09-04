@@ -1,0 +1,9 @@
+type = "http"
+name = "Matrix (Synapse)"
+# Synapse's own liveness endpoint. Answers without auth and without touching
+# the database, so it proves the process is up — pair it with the MAS monitor
+# below, because Synapse stays "healthy" here while login is entirely broken.
+url = "http://synapse:8008/health"
+interval = 60
+max_retries = 2
+accepted_statuscodes = ["200-299"]

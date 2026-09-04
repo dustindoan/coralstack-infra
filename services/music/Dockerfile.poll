@@ -9,7 +9,7 @@
 # streamrip is pinned to the version validated end-to-end on 2026-07-15. Its
 # login is broken (Qobuz #954/#956) and we deliberately don't use it — auth is
 # a web-session token; only the QobuzSpoofer is reused.
-FROM python:3.12-slim-bookworm
+FROM python:3.14-slim-bookworm
 
 ARG STREAMRIP_VERSION=2.1.0
 

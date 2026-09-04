@@ -142,6 +142,34 @@ built into the config rather than left to a race:
   and nobody can sign in. That is the intended state on first boot, not a bug —
   `setup.sh` warns rather than papering over it.
 
+### Pre-flight — four things learned after this branch was written
+
+The 2026-09-04 session deployed unrelated changes and hit three of these. They
+are cheap before you start and annoying to discover at step 4.
+
+1. **Validate the Caddyfile first.** There is no `caddy` binary on the
+   workstation, so the three MAS compat paths in this branch have never been
+   parsed by Caddy. Get it onto the box and run
+   `docker exec caddy caddy validate --config /etc/caddy/Caddyfile` **before**
+   composing anything up. The failure mode if they're wrong is "login doesn't
+   work" with clean logs on both sides — expensive to debug, seconds to rule out.
+2. **Adding vhosts means editing two places.** Caddy carries every vhost as a
+   docker network alias in the root `docker-compose.yml`, separately from the
+   Caddyfile. `chat.`, `auth.` and `matrix.` need adding there too, or
+   inter-service calls hairpin out through the eero instead of resolving
+   internally.
+3. **A Caddy recreation pages you.** Deploying this restarts Caddy, which gives
+   it a new container IP; a long-running Uptime Kuma keeps using the old one and
+   the edge monitor goes DOWN without self-healing. Finish the deploy with
+   `docker compose restart uptime-kuma` then `docker compose restart autokuma`
+   (the second is mandatory). Details and the measured evidence are in
+   [MONITORING.md](MONITORING.md).
+4. **This branch's two monitors will land unalerted.** AutoKuma creates monitors
+   with no notification attached — Kuma's "Default enabled" does not reach them
+   (measured 2026-09-04). After deploy, attach the channel in Kuma: edit the
+   ntfy notification and tick **Apply on all existing monitors**. Until then
+   `Matrix (Synapse)` and `Matrix (MAS)` are green squares nobody is paged about.
+
 Order:
 
 1. `./setup.sh` — generates secrets, the MAS signing key, and Synapse's
@@ -152,6 +180,8 @@ Order:
 3. Fill `MATRIX_OIDC_CLIENT_ID` / `_SECRET`, re-run `./setup.sh`.
 4. `docker compose up -d matrix-db matrix-auth synapse element`
 5. Sign in at `https://chat.${BASE_DOMAIN}`.
+6. Restart `uptime-kuma` then `autokuma`, and attach the notification channel to
+   the two new monitors (pre-flight items 3 and 4).
 
 > **Guard the signing key.** `${DATA_PATH}/matrix/synapse/${BASE_DOMAIN}.signing.key`
 > *is* this server's identity to the network. Lose it and peers treat a restored

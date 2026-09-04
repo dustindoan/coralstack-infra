@@ -13,6 +13,7 @@ include:
   - services/portainer/docker-compose.yml
   - services/homepage/docker-compose.yml
   - services/open-webui/docker-compose.yml
+  - services/matrix/docker-compose.yml
   - services/uptime-kuma/docker-compose.yml
   - services/smart/docker-compose.yml
   - services/autokuma/docker-compose.yml

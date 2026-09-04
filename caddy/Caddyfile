@@ -23,10 +23,66 @@
 	}
 }
 
-# ─── Landing page ────────────────────────────────────────────────────────────
+# ─── Landing page + Matrix delegation ────────────────────────────────────────
+# The apex serves the .well-known that tells the Matrix network where this
+# community's homeserver actually lives. This is what lets server_name be the
+# bare domain (so IDs read @someone:{$BASE_DOMAIN}) while Synapse itself is on
+# a subdomain behind the same single 443 forward — no port 8448, no second
+# ingress. See docs/MATRIX.md.
 {$BASE_DOMAIN} {
 	import tls_cloudflare
-	respond "CoralStack — you're connected. Services: id, vault, photos, media, ai." 200
+
+	# Server-server delegation: which host+port peers should federate with.
+	handle /.well-known/matrix/server {
+		header Content-Type application/json
+		header Access-Control-Allow-Origin *
+		respond `{"m.server": "matrix.{$BASE_DOMAIN}:443"}` 200
+	}
+
+	# Client delegation: where clients find the homeserver AND the auth service.
+	# The msc2965 block is what points Element (and Element X on mobile) at MAS
+	# instead of Synapse for login — without it clients try the legacy password
+	# flow, which is disabled, and login fails with an unhelpful error.
+	# CORS matters here: this is fetched from the browser, cross-origin.
+	handle /.well-known/matrix/client {
+		header Content-Type application/json
+		header Access-Control-Allow-Origin *
+		respond `{"m.homeserver": {"base_url": "https://matrix.{$BASE_DOMAIN}"}, "org.matrix.msc2965.authentication": {"issuer": "https://auth.{$BASE_DOMAIN}/", "account": "https://auth.{$BASE_DOMAIN}/account"}}` 200
+	}
+
+	handle {
+		respond "CoralStack — you're connected. Services: id, vault, photos, media, ai, chat." 200
+	}
+}
+
+# ─── Matrix homeserver (Synapse) ─────────────────────────────────────────────
+matrix.{$BASE_DOMAIN} {
+	import tls_cloudflare
+
+	# THESE THREE PATHS MUST REACH MAS, NOT SYNAPSE. Synapse has delegated login
+	# and will not answer them. Order matters — this block has to precede the
+	# catch-all reverse_proxy below, and the regex is the exact set MAS's
+	# compatibility layer claims. Getting this wrong presents as "login just
+	# doesn't work" with nothing obviously broken in either container's logs.
+	@mas_compat path_regexp ^/_matrix/client/(.*)/(login|logout|refresh)
+	reverse_proxy @mas_compat matrix-auth:8080
+
+	reverse_proxy synapse:8008
+}
+
+# ─── Matrix Authentication Service ───────────────────────────────────────────
+# Its own hostname because it is a separate OAuth issuer — the issuer URL is
+# baked into tokens and into Pocket ID's registered redirect URI, so it cannot
+# just be a path under the homeserver.
+auth.{$BASE_DOMAIN} {
+	import tls_cloudflare
+	reverse_proxy matrix-auth:8080
+}
+
+# ─── Element (web client) ────────────────────────────────────────────────────
+chat.{$BASE_DOMAIN} {
+	import tls_cloudflare
+	reverse_proxy element:80
 }
 
 # ─── Pocket ID (identity) ────────────────────────────────────────────────────

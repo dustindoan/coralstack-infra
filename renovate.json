@@ -19,6 +19,20 @@
   ],
   "packageRules": [
     {
+      "description": "Matrix identity plane. Synapse and MAS hold accounts, sessions and the server's federation identity, and MAS bumps have historically carried DB migrations — same care as the other stateful services. Element is just a static webapp but is versioned alongside them.",
+      "matchPackageNames": [
+        "ghcr.io/element-hq/synapse",
+        "ghcr.io/element-hq/matrix-authentication-service"
+      ],
+      "labels": ["dependencies", "stateful-review-carefully"],
+      "prPriority": 5
+    },
+    {
+      "description": "MAS tags have NO leading v (1.23.0), unlike synapse and element-web (v1.159.0) right beside them. Without this, Renovate reads the versions as a different scheme and either goes quiet or proposes nonsense.",
+      "matchPackageNames": ["ghcr.io/element-hq/matrix-authentication-service"],
+      "versioning": "semver"
+    },
+    {
       "description": "Ollama on the Mac mini. Applying a bump replaces /Applications/Ollama.app on a running host, so it is never automatic — the PR is the notification, `host/mac-mini/install.sh --upgrade-ollama` is the act. Low stakes though: the mini is AI-chat-only, nothing else depends on it (HARDWARE_FAILURE.md).",
       "matchPackageNames": ["ollama/ollama"],
       "labels": ["dependencies", "mac-mini"],

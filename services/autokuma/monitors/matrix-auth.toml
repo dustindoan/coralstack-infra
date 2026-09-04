@@ -1,0 +1,9 @@
+type = "http"
+name = "Matrix auth (MAS)"
+# The OIDC discovery document. Chosen over a bare / because it is the exact
+# thing Element fetches to start a login: if this 200s, the auth chain's first
+# hop is genuinely working, not just the container running.
+url = "http://matrix-auth:8080/.well-known/openid-configuration"
+interval = 60
+max_retries = 2
+accepted_statuscodes = ["200-299"]

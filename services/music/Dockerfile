@@ -10,7 +10,7 @@
 #
 # The container runs a quiescence-aware watch loop (ingest.sh), not cron:
 # imports should happen as soon as a drop finishes, not on a schedule.
-FROM python:3.12-slim-bookworm
+FROM python:3.14-slim-bookworm
 
 ARG BEETS_VERSION=2.12.0
 

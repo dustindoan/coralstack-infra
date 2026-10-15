@@ -554,7 +554,7 @@ if [[ -n "${POCKET_ID_API_KEY:-}" ]] && compgen -G 'services/pocket-id/clients/*
 	fi
 elif compgen -G 'services/pocket-id/clients/*.client' >/dev/null; then
 	log "POCKET_ID_API_KEY is blank — OIDC clients not reconciled (this is the one manual bootstrap)."
-	log "  Create a key: https://id.${BASE_DOMAIN}/settings/admin/api-keys  (shown once)"
+	log "  Create a key at https://id.${BASE_DOMAIN} -> Administration -> API Keys (shown once)"
 	log "  Put it in .env as POCKET_ID_API_KEY, then re-run ./setup.sh."
 fi
 

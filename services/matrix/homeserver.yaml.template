@@ -117,4 +117,15 @@ trusted_key_servers: []          # empty because federation is off; add
                                  # matrix.org here only if you open federation
 suppress_key_server_warning: true
 
-log_config: "/data/log.config"
+# Point at the log config `synapse generate` produces, which is
+# StreamHandler-only — i.e. straight to stdout, where `docker logs`, Uptime
+# Kuma and everything else can see it.
+#
+# This used to say /data/log.config, a file NOTHING in this repo ships. Synapse
+# responds to a missing log_config by writing its own default there, and that
+# default installs a TimedRotatingFileHandler on /homeserver.log — the CONTAINER
+# ROOT. Invisible while synapse ran as root; fatal once it runs as the admin uid:
+#   ValueError: Unable to configure handler 'file'
+# Measured 2026-10-15. Logging to a rotating file inside a container is the wrong
+# shape anyway — it hides output from docker logs and grows unwatched.
+log_config: "/data/${BASE_DOMAIN}.log.config"

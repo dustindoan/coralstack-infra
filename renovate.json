@@ -1,12 +1,17 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "description": "Renovate opens bump PRs into the existing branch→PR→merge→git-pull-on-box deploy flow. See docs/APP_UPDATES.md. Auto-merge is deliberately OFF everywhere: this stack holds members' photos and passwords — a human reviews every bump, and deploy to the box is a separate manual step.",
+  "description": [
+    "Renovate opens bump PRs into the existing branch→PR→merge→git-pull-on-box deploy flow. See docs/APP_UPDATES.md. Auto-merge is deliberately OFF everywhere: this stack holds members' photos and passwords — a human reviews every bump, and deploy to the box is a separate manual step.",
+    "prConcurrentLimit WAS 5, AND IT STARVED THE ONE DEPENDENCY THAT HAD NO OTHER NOTIFICATION PATH. Measured 2026-10-14: five open Renovate PRs (#26, #30, #32, #70, #72 — three of them since July) held every slot, so Renovate had never opened an Ollama PR for any version, while host/mac-mini/versions.env pinned 0.33.3 and upstream was 0.40.x. The custom manager below was working the whole time; the dashboard (issue #27) listed ollama/ollama under Rate-Limited. Nothing was broken, the queue was just full of trivial base-image bumps nobody had reviewed. Raising this to 10 (Renovate's own default) is a MITIGATION, not a fix — the cap saturates again at 10 unreviewed PRs. The fix is that the mini's runtime no longer depends on a PR to be noticed: see docs/MAC_MINI.md.",
+    "The concurrent PR limit is enforced PER REPOSITORY. A packageRules entry may carry prConcurrentLimit and the schema accepts it, but it cannot reserve a slot — the only documented nested budget is vulnerabilityAlerts, which Renovate's docs say gets its own on top of the repo-wide one. There is no way to exempt the mac-mini label from this cap."
+  ],
   "extends": [
     "config:recommended"
   ],
   "timezone": "America/Vancouver",
   "labels": ["dependencies"],
-  "prConcurrentLimit": 5,
+  "dependencyDashboard": true,
+  "prConcurrentLimit": 10,
   "minimumReleaseAge": "3 days",
   "customManagers": [
     {
@@ -19,9 +24,13 @@
   ],
   "packageRules": [
     {
-      "description": "Ollama on the Mac mini. Applying a bump replaces /Applications/Ollama.app on a running host, so it is never automatic — the PR is the notification, `host/mac-mini/install.sh --upgrade-ollama` is the act. Low stakes though: the mini is AI-chat-only, nothing else depends on it (HARDWARE_FAILURE.md).",
+      "description": [
+        "Ollama on the Mac mini. Applying a bump replaces /Applications/Ollama.app on a running host, so it is never automatic — `host/mac-mini/install.sh --upgrade-ollama` is the act. Low stakes though: the mini is AI-chat-only, nothing else depends on it (HARDWARE_FAILURE.md).",
+        "prPriority 10 puts this first in the queue of updates AWAITING CREATION, ahead of the stateful rule's 5 and every unprioritised container bump. Note what that does and does not do: prPriority only SORTS. It cannot evict a PR that already exists, so it did nothing at all while five open PRs held the cap — it decides who takes the next slot that frees, not who gets one now. Ranked first not because this is the most important dependency (it is the least — see the risk inversion in docs/MAC_MINI.md) but because it is the scarcest-notified: everything else here is a container image the drift monitor and the box's own tags also account for."
+      ],
       "matchPackageNames": ["ollama/ollama"],
       "labels": ["dependencies", "mac-mini"],
+      "prPriority": 10,
       "extractVersion": "^v(?<version>.*)$"
     },
     {

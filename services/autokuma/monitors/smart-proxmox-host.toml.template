@@ -6,4 +6,10 @@ type = "push"
 name = "SMART (Proxmox host)"
 push_token = "${SMART_HOST_PUSH_TOKEN}"
 interval = 172800
+# Every down beat, same as the apps-VM SMART monitor and for the same reason —
+# a closing remediation window. Against the 06:50 systemd timer that is daily.
+# This disk matters more than its blast radius suggests: it carries Proxmox and
+# both VMs' disks, and (HARDWARE_FAILURE.md) identity and the vault sit on it
+# with no redundancy underneath.
+resend_interval = 1
 max_retries = 0

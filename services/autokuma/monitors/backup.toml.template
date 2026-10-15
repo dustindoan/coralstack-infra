@@ -9,4 +9,10 @@ type = "push"
 name = "Nightly backup"
 push_token = "${BACKUP_PUSH_TOKEN}"
 interval = 172800
+# Every down beat — daily, against the 03:15 run. Each silent night is another
+# day of members' photos and passwords existing in one place only, so the
+# exposure grows on exactly the cadence the reminder arrives on. This is the
+# 3-2-1 rule failing quietly, which is the failure mode this monitor was built
+# for in the first place.
+resend_interval = 1
 max_retries = 0

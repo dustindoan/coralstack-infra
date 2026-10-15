@@ -22,6 +22,28 @@ services via public DNS → **eero hairpin NAT**.
 
 ### Known consequences of this topology (hard-won, do not re-learn)
 
+**`http://` does not redirect to `https://`, and that is deliberate.** Typing a
+literal `http://id.<BASE_DOMAIN>` gets a connection failure, not a redirect.
+Caddy is not misconfigured — its own config validation reports *"enabling
+automatic HTTP->HTTPS redirects"* and it listens on 80 inside the container.
+The port is simply never reachable: the root `docker-compose.yml` publishes only
+`443:443` and `443:443/udp`, and only 443 is forwarded at the eero. That follows
+from the box-as-LAN-peer decision below — **one** 443 forward, not two.
+
+It costs nothing on certificates, because DNS-01 via Cloudflare is used rather
+than HTTP-01. HTTP-01 would have *required* :80 reachable from the internet,
+which is one of the reasons DNS-01 was chosen.
+
+Practical impact is narrow: current browsers try HTTPS first for a bare hostname
+typed in the address bar, and anyone who has visited once is covered by HSTS,
+which Caddy sets by default. Only an explicit `http://` fails.
+
+Wanting redirects means publishing `80:80` **and** adding a second forward at
+the eero — trading the one-port property for a convenience and putting another
+listener on the internet. Measured 2026-10-15; recorded because the symptom
+looks like a Caddy bug and is not one.
+
+
 1. **RETRACTED, then corrected (2026-07-17, same day):** an isolation probe
    appeared to show the eero hairpin dropping UDP/443 (h3 direct to OPNsense
    WAN = 82 ms; h3 "via hairpin" = blackhole), and h3 was disabled on that

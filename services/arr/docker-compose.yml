@@ -136,7 +136,7 @@ services:
   # http://localhost:9696 / :8989 / :7878, API keys from each app's
   # Settings → General. Sits EMPTY until the origination feed exists.
   prowlarr:
-    image: linuxserver/prowlarr:2.5.2
+    image: linuxserver/prowlarr:2.6.5
     container_name: prowlarr
     restart: unless-stopped
     network_mode: "service:arr-vpn"

@@ -5,4 +5,10 @@ type = "push"
 name = "SMART (apps VM)"
 push_token = "${SMART_APPS_PUSH_TOKEN}"
 interval = 172800
+# Re-alert on EVERY down beat. The unit is DOWN BEATS, not minutes — see
+# _README.md — so against the daily 06:20 check this is a daily reminder, and
+# one every 48h if the checker itself has stopped. A drive in pre-failure is
+# the one finding here whose remediation window is actively closing: the data
+# has to come off before the disk goes. It nags until someone acts.
+resend_interval = 1
 max_retries = 0

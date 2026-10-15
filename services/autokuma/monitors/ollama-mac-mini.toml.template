@@ -14,4 +14,18 @@ type = "push"
 name = "Ollama reconcile (Mac mini)"
 push_token = "${OLLAMA_MINI_PUSH_TOKEN}"
 interval = 172800
+# Every seventh down beat — roughly weekly against the daily 06:35 check.
+#
+# THIS FIELD IS WHY THIS MONITOR WENT UNNOTICED FOR 28 DAYS. Measured
+# 2026-10-14 from Kuma's DB: monitor #12 has two `important` heartbeats in its
+# entire history — up on 2026-09-04, down on 2026-09-17 — then 41 further down
+# beats with `important = 0`. Kuma notifies on state CHANGES, and with
+# resend_interval = 0 it never speaks again. One ntfy push went out on 09-17
+# naming a version skew that cannot self-heal, and the finding was then true
+# every single morning in silence.
+#
+# Weekly, not daily: the finding here is a stale version pin on the one host
+# where a bad update costs nothing (MAC_MINI.md's risk inversion). It needs to
+# stay visible, not to wake anybody. Weekly is a standing piece of homework.
+resend_interval = 7
 max_retries = 0

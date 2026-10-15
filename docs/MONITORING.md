@@ -7,6 +7,14 @@ The guiding distinction: **a dashboard is not an alert.** Uptime Kuma renders a
 beautiful green grid that nobody is looking at when a drive starts failing at
 3am. Everything below is arranged so that a problem *pushes* to a person.
 
+> **A second distinction, learned the hard way: one push is not an alert
+> either.** Kuma notifies on state *changes*, so a monitor left at
+> `resend_interval = 0` reports a condition once and then goes quiet while it
+> stays true. Measured 2026-10-14: that is exactly what the Mac mini's
+> reconcile monitor did — one notification on 2026-09-17, then 28 days of a
+> finding that could not self-heal, arriving nowhere. The fix is per-monitor
+> and is [documented below](#the-alert-that-only-speaks-once).
+
 Related: [HARDWARE_FAILURE.md](HARDWARE_FAILURE.md) (what to do when a finding
 lands) · [RECOVERY.md](RECOVERY.md) (power loss) · [BACKUPS.md](BACKUPS.md).
 
@@ -86,19 +94,153 @@ goes nowhere. Monitors are declarative; the channel that carries them is worth
 clicking once and testing.
 
 > **On this host: done.** Read from Kuma's DB on 2026-09-04 — one channel,
-> type `ntfy`, `https://ntfy.sh`, auth `none`, active, **is_default set**, and
-> attached to every monitor. Note that "is_default" does **not** carry over to
-> monitors AutoKuma creates — see the measured finding under *Deploy drift*
-> below; that attachment is a manual step after every new `.toml`.
+> type `ntfy`, `https://ntfy.sh`, auth `none`, active, **is_default set**.
+> Note that "is_default" does **not** carry over to monitors AutoKuma creates
+> — see the measured finding under *Deploy drift* below; that attachment is a
+> manual step after every new `.toml`.
 >
-> Two things worth knowing about how it is tuned. **Both priorities are 5** —
-> ntfy's maximum, which bypasses Do Not Disturb — and that includes the
-> *recovery* notification, so a flapping monitor pages you urgently twice per
-> flap. The Edge (public TLS) monitor did exactly that on 2026-08-30, twice in
-> one evening. Consider dropping the up-priority; a monitor you mute is a
-> monitor you don't have. And **the topic is the only credential** — ntfy.sh
-> with auth `none` means anyone who learns it can both read your alerts and
-> publish fake ones, so treat it like a push token (Tier-2, Vaultwarden).
+> **Attachment, re-measured 2026-10-14: all 12 monitors have exactly one
+> notification each**, the channel above. The manual step has been done, and
+> there is no monitor on this host wired to nothing. Worth stating plainly
+> because the measured finding below — that monitor #12 *landed* unattached —
+> reads forward too easily as "#12 is unattached", and once did: it sent one
+> diagnosis of the mini's 28-day silence down the wrong path. The channel was
+> attached, it fired, and it fired correctly. What was wrong was
+> `resend_interval`, and it is [a different section](#the-alert-that-only-speaks-once).
+
+#### How the channel is tuned — and why both priorities at 5 is a mute risk
+
+Two properties of the channel, neither of which lives in this repo (it is
+hand-clicked, for the reasons above) and both of which change how often a
+phone buzzes.
+
+**Priorities. Measured 2026-10-14: `ntfyPriority = 5` and
+`ntfyPriorityDown = 5`** — ntfy's maximum, which bypasses Do Not Disturb. In
+Kuma's ntfy provider `ntfyPriority` is the *base*, used for recoveries, and
+`ntfyPriorityDown` overrides it when a monitor is DOWN. Both at the maximum
+means a **recovery pages as urgently as a failure, so one flap pages you
+twice**. The Edge (public TLS) monitor did exactly that on 2026-08-30, twice in
+one evening.
+
+That was already a nuisance. It becomes the thing that undoes the section
+below: alerts now **repeat**, so a 5/5 channel is a Do-Not-Disturb-bypassing
+alarm that returns every day until the finding is cleared. That is the single
+most reliable way to get a channel muted, and a monitor you mute is a monitor
+you don't have.
+
+**Recommended, in the same change as the resend intervals:**
+
+| Field | Now | Set to | Why |
+| --- | --- | --- | --- |
+| `ntfyPriorityDown` | 5 | **4** (high) | Still breaks through — heads-up banner, sound, vibration — but respects Do Not Disturb. Nothing in this stack is a true page: the most urgent finding here is a drive in pre-failure, whose remediation window is days. A 3am wake-up buys nothing a 7am one doesn't, and reserving 5 for nothing keeps 5 meaning something. |
+| `ntfyPriority` (recovery) | 5 | **2** (low) | A recovery is a receipt, not an interruption. At 2 it lands silently in the shade, where it is still there to read. This is what stops a flap costing two urgent pushes. |
+
+One mechanism worth knowing before touching these: `ntfyPriorityDown` is only
+consulted if it is set. Blank it and Kuma derives the down priority as
+`base + 1` capped at 5 — so dropping the base to 2 while clearing the down
+field would quietly give you 3, not 4. Set both explicitly.
+
+Change them in **Settings → Notifications**, edit the channel, and use Kuma's
+**Test** button afterwards. The test send uses `ntfyPriority`, the base — so it
+exercises the recovery priority, not the down one.
+
+**The topic is the only credential.** `ntfy.sh` with auth `none` means anyone
+who learns the topic can both read your alerts and publish fake ones. Treat it
+like a push token: Tier-2, Vaultwarden.
+
+### The alert that only speaks once
+
+**This is the push-monitor alerting contract, and it was wrong.** Everything in
+this document that says a check "pushes up/down with the reason" is accurate
+about the push and silent about what happens next. What happens next is:
+nothing.
+
+Kuma sends a notification when a monitor **changes state**. While a monitor
+stays down it sends nothing further, unless `resend_interval` is set. All five
+push monitors shipped with `resend_interval = 0`.
+
+**Measured 2026-10-14, from Kuma's SQLite on the apps VM.** Monitors 1 (SMART
+apps VM), 2 (SMART Proxmox host), 5 (Nightly backup), 11 (Deploy drift) and 12
+(Ollama reconcile) were all `interval = 172800, retry_interval = 60,
+resend_interval = 0`. Monitor #12 is the proof case: **two** `important`
+heartbeats in its entire history — up 2026-09-04 06:00 UTC, down 2026-09-17
+13:35 UTC — followed by 41 more down beats with `important = 0`. One ntfy push
+went out, 28 days before it was noticed, naming a version skew that cannot fix
+itself. The reconcile ran every morning. The monitor was red every morning. The
+channel was attached and working. Nobody was told twice.
+
+This is the failure shape worth naming, because it is not the obvious one. The
+check ran. The push arrived. The monitor went red. The notification fired. Every
+layer did its job, once, and the aggregate behaved like a layer that wasn't
+there.
+
+**The unit is down beats, not minutes.** `resend_interval = N` re-notifies
+after N consecutive down beats, from Kuma 2.4.0's own source — `++downCount`,
+then `downCount >= resendInterval` notifies and resets, implemented identically
+in `server/model/monitor.js` for polled monitors and
+`server/routers/api-router.js` for pushed ones. Since every producer in this
+repo runs daily, `N` reads as roughly *days* while the checker is alive — and
+as `2N` days once it has stopped, because then the only down beats are Kuma's
+own 48-hourly "no heartbeat in the time window". Chosen values, and the
+reasoning for each, are in
+[services/autokuma/monitors/_README.md](../services/autokuma/monitors/_README.md).
+
+#### AutoKuma does apply this to monitors that already exist
+
+Worth confirming rather than hoping, since the five monitors in question were
+created in August and September. **AutoKuma updates them in place.** Read from
+AutoKuma's source: its sync merges the declared entity over the current one
+with `serde_merge::omerge(current, new)` — so a declared value wins — and calls
+`edit_monitor` whenever the merge differs from what Kuma holds.
+`resend_interval` is a first-class field on its monitor model (serialized as
+`resendInterval`, with `resend_interval` accepted in TOML). No create-only
+caveat, and no manual step.
+
+> **One non-obvious thing this leans on, flagged because the margin is
+> narrow.** Kuma's `editMonitor` handler unconditionally runs
+> `DELETE FROM monitor_notification WHERE monitor_id = ?` and then re-inserts
+> from the `notificationIDList` in the payload. An edit that omitted that field
+> would therefore **strip the channel from the monitor it just updated** —
+> silently, leaving it green and mute. It does not happen here because Kuma
+> includes `notificationIDList` in the monitor list AutoKuma reads, and
+> `omerge` preserves fields the `.toml` does not declare, so the attachment is
+> read back and written back unchanged. That is reasoned from both codebases,
+> not observed on a live edit, which is why the check below is worth running
+> rather than assuming.
+
+**Deploying a change to these fields**, and verifying it where it counts:
+
+```bash
+# On the box, after `git pull`: re-render the templates and restart AutoKuma.
+./setup.sh                        # renders monitors/ into $DATA_PATH/autokuma/monitors
+docker compose restart autokuma
+```
+
+Then read it back out of Kuma's DB — the file is the declaration, not the
+result. There is no `sqlite3` binary on the apps VM, so use python3, read-only.
+Save this as `check-resend.py` and run it with the DB path as its argument:
+
+```python
+import sqlite3, sys
+c = sqlite3.connect("file:%s?mode=ro" % sys.argv[1], uri=True)
+q = ("select m.id, m.name, m.resend_interval, count(n.notification_id) "
+     "from monitor m left join monitor_notification n on n.monitor_id = m.id "
+     "where m.type = 'push' group by m.id order by m.id")
+for row in c.execute(q):
+    print(row)
+```
+
+```bash
+python3 check-resend.py "$DATA_PATH/uptime-kuma/kuma.db"
+```
+
+Expect the chosen `resend_interval` on each push monitor **and a notification
+count of 1** — that second column is the narrow margin above, checked.
+
+> **If you restart Uptime Kuma as part of this, restart AutoKuma after it.**
+> A Kuma restart leaves AutoKuma logged out and syncing nothing, container
+> still `Up`, every monitor still green — the 2026-08-30 case, documented under
+> *Deploy drift* below. `docker compose restart autokuma`.
 
 ### 2 & 3. The monitors — declared in this repo, not clicked
 
@@ -249,6 +391,13 @@ load-bearing: nothing in this container may ever write to Kuma's state.
 >
 > Worth auditing periodically: a monitor with no notification is invisible in
 > the dashboard, because it looks exactly like a working one.
+>
+> **That audit was run on 2026-10-14, and it passed: all 12 monitors have
+> exactly one notification each, #12 included.** The two-step above was done.
+> This note describes what happens at *creation*; it is not a statement about
+> the current state, and reading it as one has already misdirected a diagnosis
+> once — the mini's 28-day silence was `resend_interval = 0`, not a missing
+> channel. See [The alert that only speaks once](#the-alert-that-only-speaks-once).
 
 It is **read-only by construction** — it never fetches, checks out, or pushes.
 It reads local git state and asks origin a single `git ls-remote` question

@@ -8,4 +8,13 @@ type = "push"
 name = "Deploy drift (apps VM)"
 push_token = "${DRIFT_PUSH_TOKEN}"
 interval = 172800
+# Every third down beat — roughly every 3 days against the daily 06:10 check.
+# Deliberately slacker than SMART and backup: drift is a STABLE condition, not
+# a worsening one. Unpushed commits are no more lost on day four than on day
+# one, and the finding is often legitimate and transient — someone diagnosing
+# an incident on the box, which is the one place the diagnosis can happen. The
+# same argument this check already makes for not flagging untracked files
+# applies to how often it repeats itself: a daily nag about a known, accepted
+# state is how this channel gets muted.
+resend_interval = 3
 max_retries = 0

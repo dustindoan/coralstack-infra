@@ -96,6 +96,10 @@ if [[ -z "$OLLAMA_BIN" ]]; then
 fi
 
 FINDINGS=()
+# Things this run REPAIRED. They belong in the report so the repair is visible,
+# but they are not findings: a self-healing condition must not hold the monitor
+# down, or it becomes permanent red and stops meaning anything.
+NOTES=()
 PULLED=()
 
 # ─── 1. Runtime ──────────────────────────────────────────────────────────────
@@ -127,7 +131,20 @@ fi
 # before monitor #12 went red. A reconcile that only reported skew could tell
 # you the box had moved, but never that it was ABOUT to. See docs/MAC_MINI.md.
 #
-# DETECTION ONLY. Nothing here applies, clears, or unpacks anything.
+# SWEEP, NOT A FINDING — changed 2026-10-15 after measuring the recurrence.
+# This started out as detection only, on the assumption that a staged zip was a
+# one-off. It is not. The app uses Squirrel.framework (Electron's auto-updater),
+# which has no preference to switch off, and it re-downloaded 213 MB within an
+# hour of the directory being emptied by hand. A finding that can never be
+# cleared holds the monitor permanently red, which is just the one-shot
+# alerting bug wearing a different hat.
+#
+# So: delete it, and say so in the report. Nothing is lost — install.sh
+# --upgrade-ollama fetches the PINNED version from GitHub Releases and never
+# reads this cache, so the staged copy has no use on this box. And the "a newer
+# version exists" signal is Renovate's job, which is the division of
+# responsibility docs/MAC_MINI.md intends. Set OLLAMA_KEEP_STAGED=1 to inspect
+# one instead of sweeping it.
 ollama_home="${HOME:-$(cd ~ 2>/dev/null && pwd)}"
 UPDATES_DIR="${OLLAMA_UPDATES_DIR:-$ollama_home/Library/Caches/ollama/updates}"
 if [[ -d "$UPDATES_DIR" ]]; then
@@ -139,7 +156,13 @@ if [[ -d "$UPDATES_DIR" ]]; then
 		# is cheap and certain: how big, and how long it has been waiting.
 		staged_mb="$(( $(stat -f %z "$staged" 2>/dev/null || echo 0) / 1048576 ))"
 		staged_on="$(stat -f %Sm -t '%Y-%m-%d' "$staged" 2>/dev/null)"
-		FINDINGS+=("staged ollama update not applied: ${staged_mb} MB from ${staged_on} — no menu-bar click reaches this headless box. Apply with install.sh --upgrade-ollama, or delete $UPDATES_DIR")
+		if [[ "${OLLAMA_KEEP_STAGED:-0}" == 1 ]]; then
+			NOTES+=("staged update kept on request: ${staged_mb} MB from ${staged_on}")
+		elif rm -rf "$UPDATES_DIR"/* 2>/dev/null; then
+			NOTES+=("swept an unappliable staged update (${staged_mb} MB, ${staged_on})")
+		else
+			FINDINGS+=("could not sweep the staged update at $UPDATES_DIR — check permissions")
+		fi
 	fi
 fi
 
@@ -246,6 +269,12 @@ else
 	# FIRST character of IFS and read as "...pins 0.33.3;on the box but".
 	joined="$(printf '%s; ' "${FINDINGS[@]}")"
 	SUMMARY="$LABEL: ${joined%; }"
+fi
+
+# Repairs are appended to either outcome. They never change STATUS.
+if [[ ${#NOTES[@]} -gt 0 ]]; then
+	notes_joined="$(printf '%s; ' "${NOTES[@]}")"
+	SUMMARY="$SUMMARY — ${notes_joined%; }"
 fi
 
 if [[ -n "${HEALTHCHECK_URL:-}" ]]; then

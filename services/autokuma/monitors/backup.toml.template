@@ -14,5 +14,7 @@ interval = 172800
 # exposure grows on exactly the cadence the reminder arrives on. This is the
 # 3-2-1 rule failing quietly, which is the failure mode this monitor was built
 # for in the first place.
+# NO-OP ON AUTOKUMA 2.0.0 (push monitors) — set by hand in Kuma's UI
+# until >=2.1 stable. Measured 2026-10-15; see _README.md.
 resend_interval = 1
 max_retries = 0

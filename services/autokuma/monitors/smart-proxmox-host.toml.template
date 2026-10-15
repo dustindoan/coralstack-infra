@@ -11,5 +11,7 @@ interval = 172800
 # This disk matters more than its blast radius suggests: it carries Proxmox and
 # both VMs' disks, and (HARDWARE_FAILURE.md) identity and the vault sit on it
 # with no redundancy underneath.
+# NO-OP ON AUTOKUMA 2.0.0 (push monitors) — set by hand in Kuma's UI
+# until >=2.1 stable. Measured 2026-10-15; see _README.md.
 resend_interval = 1
 max_retries = 0

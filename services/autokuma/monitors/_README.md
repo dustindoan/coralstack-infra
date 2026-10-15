@@ -12,6 +12,26 @@ file makes AutoKuma treat it as a new monitor and orphan the old one.
 
 Full property reference: <https://autokuma.bigboot.dev/dev/>
 
+## ⚠️ `resend_interval` IS A NO-OP ON AUTOKUMA 2.0.0 — SET IT BY HAND
+
+**Measured on the box 2026-10-15.** AutoKuma 2.0.0 (what `services/autokuma/
+docker-compose.yml` pins) applies a changed `interval` to an existing push
+monitor **within 10 seconds**, and silently ignores `resend_interval` — no
+error, no warning, no log line. Upstream confirms it: the stable `:2` image
+drops `resend_interval` for TCP-port and push monitors, and it only becomes a
+shared monitor field in 2.1.0-rc.2. Every monitor in this directory is
+`type = "push"`, so **every `resend_interval` below is currently aspirational.**
+
+Until AutoKuma ships ≥2.1 stable, these values have to be set in Kuma's UI by
+hand: *Edit monitor → "Resend Notification if Down X times"*. They persist
+there, because AutoKuma does not manage the field and so will not revert them —
+proven in the same test, which saw it rewrite `interval` while leaving
+`resend_interval` at 0.
+
+`config:recommended` sets `ignoreUnstable`, so Renovate will not offer the
+2.1.0 release candidate and will propose 2.1.x once it is stable. Delete this
+section when that lands and the values start applying themselves.
+
 ## `resend_interval` — the unit is down BEATS, not minutes
 
 Kuma notifies on state **changes**. A monitor with `resend_interval = 0` — the

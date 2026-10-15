@@ -10,5 +10,7 @@ interval = 172800
 # one every 48h if the checker itself has stopped. A drive in pre-failure is
 # the one finding here whose remediation window is actively closing: the data
 # has to come off before the disk goes. It nags until someone acts.
+# NO-OP ON AUTOKUMA 2.0.0 (push monitors) — set by hand in Kuma's UI
+# until >=2.1 stable. Measured 2026-10-15; see _README.md.
 resend_interval = 1
 max_retries = 0

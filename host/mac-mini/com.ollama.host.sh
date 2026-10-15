@@ -20,7 +20,29 @@ launchctl setenv OLLAMA_HOST 0.0.0.0            # bind all interfaces; default l
 launchctl setenv OLLAMA_FLASH_ATTENTION 1       # prerequisite for KV cache quantization on Apple Silicon
 launchctl setenv OLLAMA_KV_CACHE_TYPE q8_0      # halves KV cache memory at long contexts, minimal quality cost
 launchctl setenv OLLAMA_KEEP_ALIVE -1           # keep models resident; default 5min unload costs a ~10s reload per idle gap
-launchctl setenv OLLAMA_NUM_PARALLEL 2          # 2 slots × 131072 tokens. 4 caused KV-cache slot eviction on ~60k+ conversations
+
+# OLLAMA_NUM_PARALLEL — concurrent request slots. 4 caused KV-cache slot
+# eviction on ~60k+ token conversations: coming back to a conversation after a
+# subagent had run forced a full cold re-prefill (~2 min for a 61k prompt).
+# 2 was the fix and the value is unchanged.
+#
+# THIS COMMENT USED TO READ "2 slots × 131072 tokens". That figure does not
+# describe this box. Measured 2026-10-14: the live context is **32768**, and
+# `OLLAMA_CONTEXT_LENGTH` is set nowhere — not here, not in the plist, not in
+# ~/.coralstack/ollama.env, and not in the running server's environment (checked
+# with `ps eww` on the ollama pid). 131072 came from arithmetic over an assumed
+# 262144-token model context, carried over from PROXMOX_MIGRATION.md Phase 4c;
+# nothing ever configured it.
+#
+# Left as a comment fix on purpose. Setting a context length here would reload
+# the resident model, and this box is serving. Note the open question it
+# leaves, which is worth measuring before anyone tunes this: the original
+# rationale for 2 was "keep each slot large enough for long single-request
+# contexts", and at a 32768 context that rationale no longer computes — the
+# ~60k conversations that motivated the change cannot fit in any slot. The
+# value 2 is still defensible on concurrency grounds; the sizing argument
+# behind it is not, and the two were conflated.
+launchctl setenv OLLAMA_NUM_PARALLEL 2
 
 # Defensive self-heal — if the Login Item beat us, the running Ollama has no env
 # vars. Detect that and restart it so it picks them up.

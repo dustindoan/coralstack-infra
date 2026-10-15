@@ -32,9 +32,26 @@ clients beside the real ones while every service kept using the old UUID. So
 existing clients are declared with the id they actually have, read out of
 Pocket ID's database on 2026-10-15. New clients may use a readable id.
 
+## Allowed groups are declared too
+
+`ALLOWED_GROUPS` is a comma-separated list of group NAMES, resolved to ids at
+run time via `GET /api/user-groups` and applied with
+`PUT /api/oidc/clients/{id}/allowed-user-groups`.
+
+This matters more than it looks: a client with `isGroupRestricted = true` and no
+groups allowed authenticates **nobody**, so a freshly created client is useless
+until the allowance is set. That was the one manual step left per client, and
+it is the reason this runs BEFORE the secret is minted.
+
+A declared group that does not exist is a **warning, never an auto-create**. A
+typo would otherwise silently produce an empty group and a client that looks
+configured and admits no one — which is the worst of both outcomes. The PUT is
+also skipped when the current set already matches, so a steady state is silent.
+
 ## What this does not manage
 
-Group membership. All three existing clients have `isGroupRestricted = true`,
-which this preserves, but which groups are allowed is set separately via
-`PUT /api/oidc/clients/{id}/allowed-user-groups` and is left to the admin UI
-for now. Users and groups are a second concern; this file is about clients.
+**Group membership** — who is in `members` and `admins`. That is the access
+model itself, it is set in the admin UI, and it is a genuinely different
+concern from wiring a client. Creating the groups is likewise a one-time act
+for the whole stack, documented in docs/ONBOARDING.md §0.5, not a per-client
+repetition.

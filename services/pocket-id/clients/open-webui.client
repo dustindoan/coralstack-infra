@@ -3,6 +3,8 @@ CLIENT_ID=e211556f-0348-4421-94a9-1870be0f48e2
 CLIENT_NAME=Open WebUI
 CALLBACK_URLS=https://ai.${BASE_DOMAIN}/oauth/oidc/callback
 PKCE=false
+# Measured 2026-10-15: this is what the client already allowed.
+ALLOWED_GROUPS=members
 GROUP_RESTRICTED=true
 REQUIRES_SERVICE=open-webui
 TARGET_ENV=services/open-webui/.env

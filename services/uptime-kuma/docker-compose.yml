@@ -15,7 +15,7 @@
 # dependency on the services it reports on (it must survive their outages).
 services:
   uptime-kuma:
-    image: louislam/uptime-kuma:2.4.0
+    image: louislam/uptime-kuma:2.5.6
     container_name: uptime-kuma
     restart: unless-stopped
     volumes:

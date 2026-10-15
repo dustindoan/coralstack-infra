@@ -89,7 +89,7 @@ services:
 
   # ── Sonarr (TV) ─────────────────────────────────────────────────────────────
   sonarr:
-    image: linuxserver/sonarr:4.0.19
+    image: linuxserver/sonarr:4.0.20
     container_name: sonarr
     restart: unless-stopped
     # Share the VPN sidecar's netns: egress through the tunnel, UI published via
@@ -114,7 +114,7 @@ services:
   # Root folder (set in the UI): /data/movies — the library Jellyfin mounts
   # read-only at /media/movies.
   radarr:
-    image: linuxserver/radarr:6.3.0
+    image: linuxserver/radarr:6.4.4
     container_name: radarr
     restart: unless-stopped
     network_mode: "service:arr-vpn"

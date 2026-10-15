@@ -4,6 +4,8 @@ CLIENT_ID=660f29ac-c5b8-4401-b615-c52c755c426a
 CLIENT_NAME=Vaultwarden
 CALLBACK_URLS=https://vault.${BASE_DOMAIN}/identity/connect/oidc-signin
 PKCE=false
+# Measured 2026-10-15: this is what the client already allowed.
+ALLOWED_GROUPS=members
 GROUP_RESTRICTED=true
 REQUIRES_SERVICE=vaultwarden
 TARGET_ENV=services/vaultwarden/.env

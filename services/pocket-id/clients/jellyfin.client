@@ -7,6 +7,8 @@ CALLBACK_URLS=https://media.${BASE_DOMAIN}/sso/OID/redirect/pocket-id
 # The plugin appends a dead duplicate provider if the name field is not exactly
 # "pocket-id", which is why that string is load-bearing in the callback above.
 PKCE=true
+# Measured 2026-10-15: this is what the client already allowed.
+ALLOWED_GROUPS=members
 GROUP_RESTRICTED=true
 REQUIRES_SERVICE=jellyfin
 TARGET_ENV=services/jellyfin/.env

@@ -260,6 +260,34 @@ register_oidc_client() (          # subshell: the declaration's vars stay local
 	if grep -qE "^${SECRET_KEY}=.+" "$TARGET_ENV"; then
 		return 0
 	fi
+	# Allowed groups, before the secret: a group-restricted client with no groups
+	# allowed authenticates nobody, so a newly created client is useless until
+	# this runs. Resolved by NAME so the declarations stay readable; a missing
+	# group is a WARNING and never an auto-create, because a typo would silently
+	# produce an empty group and a client that looks configured and admits no one.
+	if [[ -n "${ALLOWED_GROUPS:-}" ]]; then
+		groups_json="$(pid_api GET /api/user-groups)"
+		want_ids=(); missing=()
+		for g in ${ALLOWED_GROUPS//,/ }; do
+			gid="$(printf '%s' "$groups_json" | jq -r --arg n "$g" '(.data // .)[] | select(.name==$n) | .id' | head -1)"
+			if [[ -n "$gid" && "$gid" != null ]]; then want_ids+=("$gid"); else missing+=("$g"); fi
+		done
+		(( ${#missing[@]} )) && warn "OIDC: $CLIENT_NAME — no such group(s): ${missing[*]} (create them first, see ONBOARDING.md §0.5)"
+		if (( ${#want_ids[@]} )); then
+			# Only PUT when the set actually differs, so a steady state is silent.
+			have="$(pid_api GET "/api/oidc/clients/$CLIENT_ID" | jq -r '[.allowedUserGroups[]?.name] | sort | join(",")')"
+			want="$(printf '%s\n' ${ALLOWED_GROUPS//,/ } | sort | paste -sd, -)"
+			if [[ "$have" != "$want" ]]; then
+				ids_json="$(printf '%s\n' "${want_ids[@]}" | jq -R . | jq -s '{userGroupIds: .}')"
+				if pid_api PUT "/api/oidc/clients/$CLIENT_ID/allowed-user-groups" "$ids_json" >/dev/null 2>&1; then
+					log "OIDC: $CLIENT_NAME allowed groups [$have] -> [$want]"
+				else
+					warn "OIDC: $CLIENT_NAME — could not set allowed groups; it will admit nobody until fixed in the admin UI"
+				fi
+			fi
+		fi
+	fi
+
 	secret="$(gen_hex)"
 	if pid_api POST "/api/oidc/clients/$CLIENT_ID/secrets" \
 			"$(jq -n --arg s "$secret" '{secret:$s}')" | jq -e '.' >/dev/null 2>&1; then

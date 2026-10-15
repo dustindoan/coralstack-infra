@@ -10,7 +10,7 @@
 # this client does not exist yet — nothing is pointing at a generated id.
 CLIENT_ID=coralstack-matrix-mas
 CLIENT_NAME=Matrix
-CALLBACK_URLS=https://auth.${BASE_DOMAIN}/upstream/callback/01JKMATRIXPOCKETIDPROV01
+CALLBACK_URLS=https://auth.${BASE_DOMAIN}/upstream/callback/01KMATR1XMASPRVDR000000000
 PKCE=false
 # admins, not members, ON PURPOSE. docs/MATRIX.md names "is chat member-facing
 # or admin-only first?" as an open question and calls admin-only the reasonable

@@ -236,7 +236,23 @@ register_oidc_client() (          # subshell: the declaration's vars stay local
 		-H "X-API-KEY: $POCKET_ID_API_KEY" "$POCKET_ID_API/api/oidc/clients/$CLIENT_ID")"
 
 	case "$code" in
-		200) : ;;   # already there; callbacks are not force-updated, see below
+		200)
+			# Keep the callback list in sync. A declaration whose callback cannot be
+			# corrected is only half declarative — and it bit immediately: fixing the
+			# Matrix provider ULID moves the callback, and without this the client
+			# would keep the old one and login would fail with nothing obviously wrong.
+			have_cb="$(pid_api GET "/api/oidc/clients/$CLIENT_ID" | jq -r '[.callbackURLs[]?] | sort | join(",")')"
+			want_cb="$(printf '%s' "$cb_json" | jq -r 'sort | join(",")')"
+			if [[ "$have_cb" != "$want_cb" ]]; then
+				if pid_api PUT "/api/oidc/clients/$CLIENT_ID" \
+					"$(jq -n --arg n "$CLIENT_NAME" --argjson cb "$cb_json" --argjson pkce "${PKCE:-false}" --argjson grp "${GROUP_RESTRICTED:-false}" \
+					'{name:$n, callbackURLs:$cb, pkceEnabled:$pkce, isGroupRestricted:$grp}')" >/dev/null 2>&1; then
+					log "OIDC: $CLIENT_NAME callbacks [$have_cb] -> [$want_cb]"
+				else
+					warn "OIDC: $CLIENT_NAME callbacks differ and could not be updated"
+				fi
+			fi
+			;;
 		404)
 			log "OIDC: creating client $CLIENT_NAME ($CLIENT_ID)"
 			payload="$(jq -n \
@@ -475,6 +491,26 @@ if [[ ! -f "$ente_museum_yaml" ]]; then
 	fi
 fi
 
+# ─── Reconcile the declared OIDC clients ─────────────────────────────────────
+# Runs before the stack comes up so the credentials are in place when the
+# consuming services start. Needs Pocket ID already running and one API key:
+# Administration -> API Keys in its admin UI, shown once, pasted into .env.
+if [[ -n "${POCKET_ID_API_KEY:-}" ]] && compgen -G 'services/pocket-id/clients/*.client' >/dev/null; then
+	if curl -sS -m 5 -o /dev/null "$POCKET_ID_API/api/oidc/clients" 2>/dev/null ||
+	   [[ "$(curl -sS -m 5 -o /dev/null -w '%{http_code}' "$POCKET_ID_API/api/oidc/clients" 2>/dev/null)" != "000" ]]; then
+		for decl in services/pocket-id/clients/*.client; do
+			register_oidc_client "$decl" || break
+		done
+	else
+		warn "Pocket ID is not reachable on $POCKET_ID_API — skipping OIDC client reconcile."
+		warn "  It has to be up first: ./setup.sh once to start it, then re-run."
+	fi
+elif compgen -G 'services/pocket-id/clients/*.client' >/dev/null; then
+	log "POCKET_ID_API_KEY is blank — OIDC clients not reconciled (this is the one manual bootstrap)."
+	log "  Create a key at https://id.${BASE_DOMAIN} -> Administration -> API Keys (shown once)"
+	log "  Put it in .env as POCKET_ID_API_KEY, then re-run ./setup.sh."
+fi
+
 # ─── Matrix (Synapse + MAS + Element) ────────────────────────────────────────
 # Skipped entirely if matrix is commented out of the top-level compose.
 if grep -qE '^\s*-\s*services/matrix/' docker-compose.yml; then
@@ -648,26 +684,6 @@ if grep -qE '^\s*-\s*services/jellyfin/' docker-compose.yml && [[ -f "$jellyfin_
 		mkdir -p "$(dirname "$jellyfin_enc_host")"
 		cp "$jellyfin_enc_template" "$jellyfin_enc_host"
 	fi
-fi
-
-# ─── Reconcile the declared OIDC clients ─────────────────────────────────────
-# Runs before the stack comes up so the credentials are in place when the
-# consuming services start. Needs Pocket ID already running and one API key:
-# Administration -> API Keys in its admin UI, shown once, pasted into .env.
-if [[ -n "${POCKET_ID_API_KEY:-}" ]] && compgen -G 'services/pocket-id/clients/*.client' >/dev/null; then
-	if curl -sS -m 5 -o /dev/null "$POCKET_ID_API/api/oidc/clients" 2>/dev/null ||
-	   [[ "$(curl -sS -m 5 -o /dev/null -w '%{http_code}' "$POCKET_ID_API/api/oidc/clients" 2>/dev/null)" != "000" ]]; then
-		for decl in services/pocket-id/clients/*.client; do
-			register_oidc_client "$decl" || break
-		done
-	else
-		warn "Pocket ID is not reachable on $POCKET_ID_API — skipping OIDC client reconcile."
-		warn "  It has to be up first: ./setup.sh once to start it, then re-run."
-	fi
-elif compgen -G 'services/pocket-id/clients/*.client' >/dev/null; then
-	log "POCKET_ID_API_KEY is blank — OIDC clients not reconciled (this is the one manual bootstrap)."
-	log "  Create a key at https://id.${BASE_DOMAIN} -> Administration -> API Keys (shown once)"
-	log "  Put it in .env as POCKET_ID_API_KEY, then re-run ./setup.sh."
 fi
 
 # ─── Bring it up ─────────────────────────────────────────────────────────────

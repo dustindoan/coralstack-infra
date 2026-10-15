@@ -1,0 +1,21 @@
+{
+  "default_server_config": {
+    "m.homeserver": {
+      "base_url": "https://matrix.${BASE_DOMAIN}",
+      "server_name": "${BASE_DOMAIN}"
+    }
+  },
+  "disable_custom_urls": true,
+  "disable_guests": true,
+  "brand": "CoralStack Chat",
+  "default_country_code": "CA",
+  "show_labs_settings": false,
+  "room_directory": { "servers": ["${BASE_DOMAIN}"] },
+  "setting_defaults": {
+    "UIFeature.registration": false,
+    "UIFeature.passwordReset": false,
+    "UIFeature.deactivate": false
+  },
+  "features": {},
+  "map_style_url": null
+}

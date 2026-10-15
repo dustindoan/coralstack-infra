@@ -24,6 +24,20 @@
   ],
   "packageRules": [
     {
+      "description": "Matrix identity plane. Synapse and MAS hold accounts, sessions and the server's federation identity, and MAS bumps have historically carried DB migrations — same care as the other stateful services. Element is just a static webapp but is versioned alongside them.",
+      "matchPackageNames": [
+        "ghcr.io/element-hq/synapse",
+        "ghcr.io/element-hq/matrix-authentication-service"
+      ],
+      "labels": ["dependencies", "stateful-review-carefully"],
+      "prPriority": 5
+    },
+    {
+      "description": "MAS tags have NO leading v (1.23.0), unlike synapse and element-web (v1.159.0) right beside them. Without this, Renovate reads the versions as a different scheme and either goes quiet or proposes nonsense.",
+      "matchPackageNames": ["ghcr.io/element-hq/matrix-authentication-service"],
+      "versioning": "semver"
+    },
+    {
       "description": [
         "Ollama on the Mac mini. Applying a bump replaces /Applications/Ollama.app on a running host, so it is never automatic — `host/mac-mini/install.sh --upgrade-ollama` is the act. Low stakes though: the mini is AI-chat-only, nothing else depends on it (HARDWARE_FAILURE.md).",
         "prPriority 10 puts this first in the queue of updates AWAITING CREATION, ahead of the stateful rule's 5 and every unprioritised container bump. Note what that does and does not do: prPriority only SORTS. It cannot evict a PR that already exists, so it did nothing at all while five open PRs held the cap — it decides who takes the next slot that frees, not who gets one now. Ranked first not because this is the most important dependency (it is the least — see the risk inversion in docs/MAC_MINI.md) but because it is the scarcest-notified: everything else here is a container image the drift monitor and the box's own tags also account for."

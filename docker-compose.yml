@@ -71,3 +71,11 @@ services:
           - photos-storage.${BASE_DOMAIN}
           - ai.${BASE_DOMAIN}
           - status.${BASE_DOMAIN}
+          # Matrix. These three are load-bearing: Caddy carries every vhost as a
+          # docker network alias so inter-service calls resolve on the bridge
+          # instead of hairpinning out through the eero. MATRIX.md's pre-flight
+          # names this and the branch had not done it — added 2026-10-15 after
+          # diffing the Caddyfile's vhosts against this list.
+          - chat.${BASE_DOMAIN}
+          - auth.${BASE_DOMAIN}
+          - matrix.${BASE_DOMAIN}

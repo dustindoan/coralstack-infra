@@ -12,25 +12,37 @@ file makes AutoKuma treat it as a new monitor and orphan the old one.
 
 Full property reference: <https://autokuma.bigboot.dev/dev/>
 
-## ⚠️ `resend_interval` IS A NO-OP ON AUTOKUMA 2.0.0 — SET IT BY HAND
+## `resend_interval` works, and it took a release candidate
 
-**Measured on the box 2026-10-15.** AutoKuma 2.0.0 (what `services/autokuma/
-docker-compose.yml` pins) applies a changed `interval` to an existing push
-monitor **within 10 seconds**, and silently ignores `resend_interval` — no
-error, no warning, no log line. Upstream confirms it: the stable `:2` image
-drops `resend_interval` for TCP-port and push monitors, and it only becomes a
-shared monitor field in 2.1.0-rc.2. Every monitor in this directory is
-`type = "push"`, so **every `resend_interval` below is currently aspirational.**
+**Measured on the box 2026-10-15, both ways.** On AutoKuma **2.0.0** a changed
+`interval` reached Kuma's DB in under 10 seconds while `resend_interval` stayed
+0 with the TOML reading 7 — no error, no warning, no log line. The stable `:2`
+image drops the field for TCP-port and push monitors, and every monitor here is
+`type = "push"`. On **2.1.0-rc.2** the same TOMLs applied in **12 seconds**:
 
-Until AutoKuma ships ≥2.1 stable, these values have to be set in Kuma's UI by
-hand: *Edit monitor → "Resend Notification if Down X times"*. They persist
-there, because AutoKuma does not manage the field and so will not revert them —
-proven in the same test, which saw it rewrite `interval` while leaving
-`resend_interval` at 0.
+```
+monitors=12   push_resend=[1, 1, 1, 3, 7]   http_resend=[0, 0, 0, 0, 0, 0, 0]
+[autokuma::sync] INFO: Updating push: smart-proxmox-host
+[autokuma::sync] INFO: Updating push: smart-apps-vm
+[autokuma::sync] INFO: Updating push: drift
+[autokuma::sync] INFO: Updating push: ollama-mac-mini
+[autokuma::sync] INFO: Updating push: backup
+```
 
-`config:recommended` sets `ignoreUnstable`, so Renovate will not offer the
-2.1.0 release candidate and will propose 2.1.x once it is stable. Delete this
-section when that lands and the values start applying themselves.
+The seven HTTP monitors stayed at 0, which is how we know the values came from
+these files and not from something else. No duplication — still 12 monitors.
+
+`services/autokuma/docker-compose.yml` therefore pins a release candidate on
+purpose: 2.1.0-rc.2 shipped 2026-06-18 and 2.1.0 stable still has not, while
+the last stable is from 2025-11-12. `ignoreUnstable` means Renovate will offer
+2.1.0 stable as an ordinary bump when it lands, retiring the pin.
+
+**And the notification channels survived the edit.** Kuma's `editMonitor`
+unconditionally deletes `monitor_notification` rows and re-inserts from the
+payload, so an edit omitting `notificationIDList` would strip the channel and
+leave a monitor green and mute. Checked immediately after this edit: all 12
+monitors still hold exactly 1 notification. Previously reasoned from source;
+now observed on a live edit of all five.
 
 ## `resend_interval` — the unit is down BEATS, not minutes
 

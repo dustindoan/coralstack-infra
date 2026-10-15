@@ -185,16 +185,21 @@ own 48-hourly "no heartbeat in the time window". Chosen values, and the
 reasoning for each, are in
 [services/autokuma/monitors/_README.md](../services/autokuma/monitors/_README.md).
 
-#### AutoKuma does apply this to monitors that already exist
+#### AutoKuma applies this in place — but only from 2.1.0-rc.2
 
 Worth confirming rather than hoping, since the five monitors in question were
-created in August and September. **AutoKuma updates them in place.** Read from
-AutoKuma's source: its sync merges the declared entity over the current one
+created in August and September. **AutoKuma updates them in place — and the
+version decides whether that includes this field.** The source-reading below is
+correct and was still not enough: the stable `:2` image drops
+`resend_interval` for TCP-port and push monitors, so on the deployed 2.0.0 all
+five were silently unaffected — a changed `interval` landed in under 10 seconds
+while `resend_interval` stayed 0 (measured 2026-10-15). Pinning 2.1.0-rc.2 made
+the same TOMLs apply in 12 seconds. Read from AutoKuma's source: its sync merges the declared entity over the current one
 with `serde_merge::omerge(current, new)` — so a declared value wins — and calls
 `edit_monitor` whenever the merge differs from what Kuma holds.
 `resend_interval` is a first-class field on its monitor model (serialized as
 `resendInterval`, with `resend_interval` accepted in TOML). No create-only
-caveat, and no manual step.
+caveat and no manual step — **from 2.1.0-rc.2 onward.**
 
 > **One non-obvious thing this leans on, flagged because the margin is
 > narrow.** Kuma's `editMonitor` handler unconditionally runs
@@ -204,9 +209,12 @@ caveat, and no manual step.
 > silently, leaving it green and mute. It does not happen here because Kuma
 > includes `notificationIDList` in the monitor list AutoKuma reads, and
 > `omerge` preserves fields the `.toml` does not declare, so the attachment is
-> read back and written back unchanged. That is reasoned from both codebases,
-> not observed on a live edit, which is why the check below is worth running
-> rather than assuming.
+> read back and written back unchanged. That was reasoned from both codebases
+> rather than observed — and it has now been observed: immediately after
+> 2.1.0-rc.2 edited all five push monitors, all 12 monitors still held exactly
+> one notification each. The attachment survives. Run the check below after any
+> AutoKuma version change regardless, because this is the failure that would
+> look like success.
 
 **Deploying a change to these fields**, and verifying it where it counts:
 

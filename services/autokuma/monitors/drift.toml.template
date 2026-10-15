@@ -16,7 +16,5 @@ interval = 172800
 # same argument this check already makes for not flagging untracked files
 # applies to how often it repeats itself: a daily nag about a known, accepted
 # state is how this channel gets muted.
-# NO-OP ON AUTOKUMA 2.0.0 (push monitors) — set by hand in Kuma's UI
-# until >=2.1 stable. Measured 2026-10-15; see _README.md.
 resend_interval = 3
 max_retries = 0

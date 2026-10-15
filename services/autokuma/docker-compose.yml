@@ -22,7 +22,7 @@
 # aren't containers at all (the public TLS edge).
 services:
   autokuma:
-    image: ghcr.io/bigboot/autokuma:2.0.0
+    image: ghcr.io/bigboot/autokuma:2.1.0-rc.2
     container_name: autokuma
     restart: unless-stopped
     depends_on:

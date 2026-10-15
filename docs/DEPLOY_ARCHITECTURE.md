@@ -150,6 +150,24 @@ convenience quietly turn a Postgres major into a rubber-stamp. (Postgres majors
 are already `enabled: false` in Renovate — they need a dump/restore migration,
 not a tag bump; the deploy primitive should refuse them outright.)
 
+### Recreating Caddy needs a monitoring restart afterwards
+
+A deploy that rebuilds Caddy gives it a new container IP, and Uptime Kuma keeps
+probing the old one — which docker may already have handed to a different
+container. The edge monitor goes DOWN and pages, and it does not self-heal.
+Measured 2026-09-04; the mechanics are in
+[MONITORING.md](MONITORING.md#caddy-recreation-gives-this-monitor-a-false-down).
+
+Until Caddy has a fixed address, any deploy that recreates it ends with:
+
+```bash
+docker compose restart uptime-kuma
+docker compose restart autokuma   # restarting Kuma disconnects it
+```
+
+The deploy primitive should do this automatically when the Caddy container is
+replaced — a deploy that leaves a false alarm behind isn't finished.
+
 ## Build plan
 
 This is buildable now, in increments, each independently useful:

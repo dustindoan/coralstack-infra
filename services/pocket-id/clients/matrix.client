@@ -1,0 +1,24 @@
+# Matrix — Matrix Authentication Service (MAS) is the OIDC client; Synapse
+# delegates to it. NOT YET DEPLOYED: skipped until services/matrix/ is in the
+# top-level compose include list.
+#
+# MAS identifies upstream providers by ULID and bakes it into the callback path,
+# so MATRIX_OIDC_PROVIDER_ID in services/matrix/.env must match the ULID below
+# exactly. Changing either orphans the registration.
+#
+# A readable id is used here rather than a UUID, because unlike the three above
+# this client does not exist yet — nothing is pointing at a generated id.
+CLIENT_ID=coralstack-matrix-mas
+CLIENT_NAME=Matrix
+CALLBACK_URLS=https://auth.${BASE_DOMAIN}/upstream/callback/01JKMATRIXPOCKETIDPROV01
+PKCE=false
+# admins, not members, ON PURPOSE. docs/MATRIX.md names "is chat member-facing
+# or admin-only first?" as an open question and calls admin-only the reasonable
+# default until it proves itself — onboarding is already 2-3 hours per member.
+# Flipping it later is this one line plus ./setup.sh.
+ALLOWED_GROUPS=admins
+GROUP_RESTRICTED=true
+REQUIRES_SERVICE=matrix
+TARGET_ENV=services/matrix/.env
+ID_KEY=MATRIX_OIDC_CLIENT_ID
+SECRET_KEY=MATRIX_OIDC_CLIENT_SECRET

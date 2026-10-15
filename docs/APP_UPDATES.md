@@ -86,6 +86,47 @@ Not all updates are equal. The flow should classify and route:
   especially) — **always human-gated**: read release notes, **back up first**,
   expect schema migrations, have a rollback plan. Never fast-track these.
 
+## Taking a major version
+
+**Majors are not blocked.** `config:recommended` gives each one its own PR, and
+only `postgres` has them disabled — because a Postgres major is a dump/restore
+migration rather than a tag change. Everything else, stateful services
+included, arrives as an ordinary PR to review. `actions/checkout v4 → v7` went
+through on 2026-10-15 without ceremony.
+
+What a major needs that a patch doesn't, as worked on Pocket ID v2.5.0 →
+v2.18.0 (13 minors, the identity root, holding every passkey) on 2026-10-15:
+
+1. **Read the breaking-changes section, not the heading.** Thirteen minors of
+   Pocket ID looked alarming and carried no user-facing break. Homepage v2.0.0
+   looked routine and its one breaking item was the introduction of
+   authentication. The heading tells you nothing either way.
+2. **Ask what the data does.** Pocket ID is SQLite in a single volume and its
+   migrations run forward on start and are **one-way**. That one fact decides
+   everything else: rollback means restoring the data directory, not reverting
+   the tag.
+3. **Capture state the way `backup.sh` does, not the way `cp` does.** The live
+   DB had a 4.1 MB WAL and a hot `tar` can capture a torn state. Use sqlite's
+   `.backup`, then verify the dump by reading rows back out of it.
+4. **Write down a census first.** 3 `oidc_clients`, 1 user, 2
+   `webauthn_credentials`, 2 `user_groups`. A migration that silently empties a
+   table still produces a healthy container; the census is the only thing that
+   catches it. Compare after.
+5. **Pre-pull the image.** Confirms the tag exists — which caught that
+   `qbittorrent 20.04.1` was a phantom — and stops the deploy stalling
+   mid-recreate.
+6. **Wait for `healthy`, never a fixed sleep.** Eight seconds was not enough for
+   Kuma and produced a screenful of EngineIO errors that meant nothing and cost
+   an hour of misdiagnosis.
+7. **Verify what the service is FOR, not that it is up.** For an identity
+   provider, the discovery document and the census. For Homepage,
+   `/api/services` — because `/` renders a skeleton whether or not it works.
+8. **Know which recreations page you.** A Caddy recreation gives it a new
+   container IP that a long-running Kuma keeps probing, so finish with
+   `docker compose restart uptime-kuma` and then `autokuma`. See MONITORING.md.
+
+For anything in the stateful tier above, steps 3 and 4 are not optional.
+
 ## Where the AI agent fits (and where it doesn't)
 
 This is the natural, *bounded* first job for **lettabot** (the planned Mac-mini

@@ -1,7 +1,14 @@
 services:
   pocket-id:
-    image: ghcr.io/pocket-id/pocket-id:v2.5.0
+    image: ghcr.io/pocket-id/pocket-id:v2.18.0
     container_name: pocket-id
+    # Loopback-only publish so setup.sh can reach the admin REST API to
+    # reconcile services/pocket-id/clients/*.client. setup.sh runs on the HOST,
+    # not inside the compose network, and this service is otherwise only
+    # reachable as pocket-id:1411 from other containers. 127.0.0.1 keeps it off
+    # the LAN — the same shape Homepage uses for its own admin surface.
+    ports:
+      - "127.0.0.1:1411:1411"
     restart: unless-stopped
     env_file:
       - path: .env

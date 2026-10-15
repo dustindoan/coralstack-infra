@@ -1,9 +1,24 @@
-# Deliberately the PUBLIC url, not a container name: this is the only monitor
-# that exercises the whole chain — DNS, the eero forward, OPNsense NAT, Caddy,
-# and TLS. Expect it to be the noisy one; it fails for reasons outside the box.
-# Longer retry budget so a transient ISP blip isn't an incident.
+# Caddy's TLS termination, probed over the docker network.
+#
+# ⚠️ THIS DOES NOT TEST THE EXTERNAL PATH, despite the public URL below.
+# Measured 2026-09-04. Caddy carries every vhost as a docker network ALIAS
+# (see the `aliases:` block in the root docker-compose.yml — deliberate, so
+# inter-service calls like Jellyfin's SSO plugin hitting id.${BASE_DOMAIN}
+# resolve internally instead of going out through eero's hairpin NAT).
+# Uptime Kuma is on that same network, so this URL resolves straight to
+# Caddy's container IP and the probe never leaves the bridge. No DNS, no eero
+# forward, no OPNsense NAT. This file used to claim all three.
+#
+# What it DOES cover, which is still worth having: Caddy is up, routing by SNI,
+# and serving a certificate that validates for this hostname.
+# The real external check is MONITORING.md §4 and is still not built — nothing
+# has ever been testing the public path.
+#
+# Expect a false DOWN whenever Caddy is recreated: Kuma keeps using the
+# pre-recreation container IP, and docker recycles those. Remedy is a restart
+# of uptime-kuma AND THEN autokuma. See MONITORING.md.
 type = "http"
-name = "Edge (public TLS)"
+name = "Edge TLS (Caddy, in-network)"
 url = "https://id.${BASE_DOMAIN}"
 interval = 120
 max_retries = 3

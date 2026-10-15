@@ -35,7 +35,7 @@ services:
   # When migrating to Proton later this custom-config hack goes away: Proton has
   # clean native support — VPN_SERVICE_PROVIDER=protonvpn + VPN_TYPE=wireguard + a key.
   dispatcharr-vpn:
-    image: qmcgaw/gluetun:v3.41.1
+    image: qmcgaw/gluetun:v3.41.3
     container_name: dispatcharr-vpn
     restart: unless-stopped
     cap_add:
@@ -72,7 +72,7 @@ services:
 
   # ── Dispatcharr (IPTV manager) ──────────────────────────────────────────────
   dispatcharr:
-    image: ghcr.io/dispatcharr/dispatcharr:0.27.0
+    image: ghcr.io/dispatcharr/dispatcharr:0.32.0
     container_name: dispatcharr
     restart: unless-stopped
     # Share the VPN sidecar's network namespace: all of Dispatcharr's traffic

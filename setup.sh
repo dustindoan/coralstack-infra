@@ -39,6 +39,8 @@ ensure_pkg openssl
 # envsubst (used to render services/ente/museum.yaml from its template) ships
 # in gettext-base on Debian/Ubuntu, gettext on Fedora/Arch.
 ensure_pkg envsubst gettext-base
+# jq parses Pocket ID's API responses when reconciling OIDC clients.
+ensure_pkg jq
 
 command -v docker >/dev/null || die "docker not found. Install Docker Engine first: curl -fsSL https://get.docker.com | sudo sh"
 docker compose version >/dev/null 2>&1 || die "docker compose v2 not found (bundled with modern Docker Engine)."
@@ -189,6 +191,114 @@ set_value() {
 gen_hex()    { openssl rand -hex 32; }
 gen_base64() { openssl rand -base64 48 | tr -d '\n'; }
 
+# ─── Declarative OIDC clients ────────────────────────────────────────────────
+# Reconcile services/pocket-id/clients/*.client against Pocket ID's REST API.
+# See services/pocket-id/clients/_README.md for why this is a function and not
+# a container: the API lets the CALLER choose both the client id and the client
+# secret, so nothing is captured from a one-time response and nothing is read
+# back. That is what makes `fill_secret` sufficient here.
+#
+# Reachability: pocket-id does not publish to the LAN, and setup.sh runs on the
+# host rather than inside the compose network, so services/pocket-id/docker-
+# compose.yml binds 127.0.0.1:1411 — the same loopback-only shape Homepage uses.
+POCKET_ID_API="http://127.0.0.1:1411"
+
+pid_api() {  # method path [json]
+	local method="$1" path="$2" body="${3:-}"
+	if [[ -n "$body" ]]; then
+		curl -sS -m 20 -X "$method" "$POCKET_ID_API$path" \
+			-H "X-API-KEY: $POCKET_ID_API_KEY" \
+			-H 'Content-Type: application/json' -d "$body"
+	else
+		curl -sS -m 20 -X "$method" "$POCKET_ID_API$path" \
+			-H "X-API-KEY: $POCKET_ID_API_KEY"
+	fi
+}
+
+register_oidc_client() (          # subshell: the declaration's vars stay local
+	decl="$1"
+	# shellcheck disable=SC1090
+	. "$decl"
+
+	# Skip a client whose service is not in the compose include list. Matrix is
+	# declared before it is deployed, and its .env does not exist until then.
+	if [[ -n "${REQUIRES_SERVICE:-}" ]] &&
+	   ! grep -qE "^[[:space:]]*-[[:space:]]*services/${REQUIRES_SERVICE}/" docker-compose.yml; then
+		return 0
+	fi
+	[[ -f "$TARGET_ENV" ]] || { warn "OIDC: $TARGET_ENV missing — skipping $CLIENT_NAME"; return 0; }
+
+	callbacks="$(printf '%s' "$CALLBACK_URLS" | envsubst '$BASE_DOMAIN')"
+	# CALLBACK_URLS is comma-separated in the declaration, a JSON array in the API.
+	cb_json="$(printf '%s' "$callbacks" | jq -R 'split(",") | map(gsub("^\\s+|\\s+$";""))')"
+
+	code="$(curl -sS -m 20 -o /dev/null -w '%{http_code}' \
+		-H "X-API-KEY: $POCKET_ID_API_KEY" "$POCKET_ID_API/api/oidc/clients/$CLIENT_ID")"
+
+	case "$code" in
+		200) : ;;   # already there; callbacks are not force-updated, see below
+		404)
+			log "OIDC: creating client $CLIENT_NAME ($CLIENT_ID)"
+			payload="$(jq -n \
+				--arg id "$CLIENT_ID" --arg name "$CLIENT_NAME" \
+				--argjson cb "$cb_json" \
+				--argjson pkce "${PKCE:-false}" \
+				--argjson grp "${GROUP_RESTRICTED:-false}" \
+				'{id:$id, name:$name, callbackURLs:$cb, pkceEnabled:$pkce, isGroupRestricted:$grp}')"
+			if ! pid_api POST /api/oidc/clients "$payload" | jq -e '.id' >/dev/null 2>&1; then
+				warn "OIDC: creating $CLIENT_NAME failed — left for the admin UI"
+				return 0
+			fi
+			;;
+		401|403) warn "OIDC: POCKET_ID_API_KEY rejected (HTTP $code) — skipping all clients"; return 1 ;;
+		*)       warn "OIDC: Pocket ID returned HTTP $code for $CLIENT_NAME — skipping"; return 0 ;;
+	esac
+
+	# Only mint a secret when the consuming .env has none. An existing secret is
+	# never rotated: that would break a running service, and Pocket ID cannot
+	# return an existing secret's value anyway, so we could not put it back.
+	if grep -qE "^${SECRET_KEY}=.+" "$TARGET_ENV"; then
+		return 0
+	fi
+	# Allowed groups, before the secret: a group-restricted client with no groups
+	# allowed authenticates nobody, so a newly created client is useless until
+	# this runs. Resolved by NAME so the declarations stay readable; a missing
+	# group is a WARNING and never an auto-create, because a typo would silently
+	# produce an empty group and a client that looks configured and admits no one.
+	if [[ -n "${ALLOWED_GROUPS:-}" ]]; then
+		groups_json="$(pid_api GET /api/user-groups)"
+		want_ids=(); missing=()
+		for g in ${ALLOWED_GROUPS//,/ }; do
+			gid="$(printf '%s' "$groups_json" | jq -r --arg n "$g" '(.data // .)[] | select(.name==$n) | .id' | head -1)"
+			if [[ -n "$gid" && "$gid" != null ]]; then want_ids+=("$gid"); else missing+=("$g"); fi
+		done
+		(( ${#missing[@]} )) && warn "OIDC: $CLIENT_NAME — no such group(s): ${missing[*]} (create them first, see ONBOARDING.md §0.5)"
+		if (( ${#want_ids[@]} )); then
+			# Only PUT when the set actually differs, so a steady state is silent.
+			have="$(pid_api GET "/api/oidc/clients/$CLIENT_ID" | jq -r '[.allowedUserGroups[]?.name] | sort | join(",")')"
+			want="$(printf '%s\n' ${ALLOWED_GROUPS//,/ } | sort | paste -sd, -)"
+			if [[ "$have" != "$want" ]]; then
+				ids_json="$(printf '%s\n' "${want_ids[@]}" | jq -R . | jq -s '{userGroupIds: .}')"
+				if pid_api PUT "/api/oidc/clients/$CLIENT_ID/allowed-user-groups" "$ids_json" >/dev/null 2>&1; then
+					log "OIDC: $CLIENT_NAME allowed groups [$have] -> [$want]"
+				else
+					warn "OIDC: $CLIENT_NAME — could not set allowed groups; it will admit nobody until fixed in the admin UI"
+				fi
+			fi
+		fi
+	fi
+
+	secret="$(gen_hex)"
+	if pid_api POST "/api/oidc/clients/$CLIENT_ID/secrets" \
+			"$(jq -n --arg s "$secret" '{secret:$s}')" | jq -e '.' >/dev/null 2>&1; then
+		fill_secret "$TARGET_ENV" "$ID_KEY"     "$CLIENT_ID"
+		fill_secret "$TARGET_ENV" "$SECRET_KEY" "$secret"
+		log "OIDC: wired $CLIENT_NAME into $TARGET_ENV"
+	else
+		warn "OIDC: could not set a secret for $CLIENT_NAME — $TARGET_ENV left blank"
+	fi
+)
+
 init_service_env pocket-id
 init_service_env vaultwarden
 init_service_env ente
@@ -230,6 +340,7 @@ if [[ -f services/autokuma/.env ]]; then
 	fill_secret services/autokuma/.env SMART_APPS_PUSH_TOKEN "$(gen_push_token)"
 	fill_secret services/autokuma/.env SMART_HOST_PUSH_TOKEN "$(gen_push_token)"
 	fill_secret services/autokuma/.env DRIFT_PUSH_TOKEN       "$(gen_push_token)"
+	fill_secret services/autokuma/.env OLLAMA_MINI_PUSH_TOKEN "$(gen_push_token)"
 
 	# shellcheck disable=SC1091
 	set -a; source services/autokuma/.env; set +a
@@ -277,7 +388,7 @@ if [[ -f services/autokuma/.env ]]; then
 	for f in services/autokuma/monitors/*.toml.template; do
 		[[ -e "$f" ]] || continue
 		out="$autokuma_out/$(basename "$f" .template)"
-		envsubst '$BASE_DOMAIN $BACKUP_PUSH_TOKEN $SMART_APPS_PUSH_TOKEN $SMART_HOST_PUSH_TOKEN $DRIFT_PUSH_TOKEN' \
+		envsubst '$BASE_DOMAIN $BACKUP_PUSH_TOKEN $SMART_APPS_PUSH_TOKEN $SMART_HOST_PUSH_TOKEN $DRIFT_PUSH_TOKEN $OLLAMA_MINI_PUSH_TOKEN' \
 			< "$f" > "$out"
 		rendered=$((rendered + 1))
 	done
@@ -525,6 +636,26 @@ if grep -qE '^\s*-\s*services/jellyfin/' docker-compose.yml && [[ -f "$jellyfin_
 	fi
 fi
 
+# ─── Reconcile the declared OIDC clients ─────────────────────────────────────
+# Runs before the stack comes up so the credentials are in place when the
+# consuming services start. Needs Pocket ID already running and one API key:
+# Administration -> API Keys in its admin UI, shown once, pasted into .env.
+if [[ -n "${POCKET_ID_API_KEY:-}" ]] && compgen -G 'services/pocket-id/clients/*.client' >/dev/null; then
+	if curl -sS -m 5 -o /dev/null "$POCKET_ID_API/api/oidc/clients" 2>/dev/null ||
+	   [[ "$(curl -sS -m 5 -o /dev/null -w '%{http_code}' "$POCKET_ID_API/api/oidc/clients" 2>/dev/null)" != "000" ]]; then
+		for decl in services/pocket-id/clients/*.client; do
+			register_oidc_client "$decl" || break
+		done
+	else
+		warn "Pocket ID is not reachable on $POCKET_ID_API — skipping OIDC client reconcile."
+		warn "  It has to be up first: ./setup.sh once to start it, then re-run."
+	fi
+elif compgen -G 'services/pocket-id/clients/*.client' >/dev/null; then
+	log "POCKET_ID_API_KEY is blank — OIDC clients not reconciled (this is the one manual bootstrap)."
+	log "  Create a key at https://id.${BASE_DOMAIN} -> Administration -> API Keys (shown once)"
+	log "  Put it in .env as POCKET_ID_API_KEY, then re-run ./setup.sh."
+fi
+
 # ─── Bring it up ─────────────────────────────────────────────────────────────
 # docker compose up handles pull + build transparently: pulls registry images,
 # builds services with a build: directive (like our custom Caddy).
@@ -568,9 +699,10 @@ Next steps:
         This step is manual on purpose, and nothing else alerts without it.
 EOF
 
-# The Proxmox host runs the SMART check outside this compose, so its push URL
-# can't be written to a file from here. Surface it rather than making the admin
-# go digging in services/autokuma/.env for a value they don't know exists.
+# Two hosts run their checks outside this compose — the Proxmox hypervisor and
+# the Mac mini — so their push URLs can't be written to a file from here.
+# Surface them rather than making the admin go digging in
+# services/autokuma/.env for a value they don't know exists.
 if [[ -n "${SMART_HOST_PUSH_TOKEN:-}" ]]; then
 	cat <<EOF
 
@@ -581,5 +713,19 @@ if [[ -n "${SMART_HOST_PUSH_TOKEN:-}" ]]; then
 
      The public URL, not the container name — the host isn't on the coralstack
      docker network, so it hairpins back through the eero.
+EOF
+fi
+
+if [[ -n "${OLLAMA_MINI_PUSH_TOKEN:-}" ]]; then
+	cat <<EOF
+
+  6. On the MAC MINI (not this VM), run host/mac-mini/install.sh and set
+     HEALTHCHECK_URL in ~/.coralstack/ollama.env to:
+
+       https://status.${BASE_DOMAIN}/api/push/${OLLAMA_MINI_PUSH_TOKEN}
+
+     Public URL again, and for the same reason. Until this is set the mini's
+     daily reconcile still runs and still exits non-zero — but nothing is
+     listening, so a lagging Ollama or a missing model reaches nobody.
 EOF
 fi

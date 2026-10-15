@@ -316,3 +316,5 @@ SMART runner, for the same reason.
   doc's risk inversion rests on.
 - [MONITORING.md](MONITORING.md) — the push-monitor contract the reconcile
   script follows.
+- [AGENT.md](AGENT.md) — the reconcile script is the agent's intended first
+  job; the agent is a fourth trigger, not new machinery.

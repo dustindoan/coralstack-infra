@@ -87,15 +87,6 @@
       ],
       "matchPackageNames": ["linuxserver/qbittorrent"],
       "allowedVersions": "<6"
-    },
-    {
-      "description": [
-        "Homepage: stay on 1.x for now. v2.0.0 (2026-08-14) ships a '⚠️ Breaking Changes' section and this service's entire configuration is config-as-code in services/homepage/config, so a major is a config-migration exercise rather than a tag bump. Taking v1.13.2 within the major instead.",
-        "Lift this deliberately, with the v2 release notes open and the config reviewed, not as part of a backlog sweep."
-      ],
-      "matchPackageNames": ["ghcr.io/gethomepage/homepage"],
-      "matchUpdateTypes": ["major"],
-      "enabled": false
     }
   ]
 }

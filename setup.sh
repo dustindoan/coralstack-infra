@@ -510,7 +510,21 @@ if grep -qE '^\s*-\s*services/matrix/' docker-compose.yml; then
 	synapse_key="$DATA_PATH/matrix/synapse/${BASE_DOMAIN}.signing.key"
 	if [[ ! -f "$synapse_key" ]]; then
 		log "Generating Synapse signing key (one-shot container run)"
+		# BOTH of the next two lines are load-bearing, and leaving either out
+		# makes the render below fail with EACCES. Measured 2026-10-15:
+		#   - mkdir first, because Docker creates a MISSING bind-mount source
+		#     directory as root.
+		#   - --user, because Synapse's entrypoint chowns /data to its own
+		#     in-container user (991) when it runs as root. That is what
+		#     happened: data/matrix/synapse ended up drwxrwxr-x 991:991, with
+		#     no group write for the admin (1000), so rendering homeserver.yaml
+		#     by shell redirect died — after the signing key had been written,
+		#     leaving the deploy half-done.
+		# Verified in a scratch dir: generate succeeds as 1000:1000 and every
+		# file it writes is admin-owned and overwritable.
+		mkdir -p "$DATA_PATH/matrix/synapse"
 		docker run --rm \
+			--user "$(id -u):$(id -g)" \
 			-v "$DATA_PATH/matrix/synapse:/data" \
 			-e SYNAPSE_SERVER_NAME="$BASE_DOMAIN" \
 			-e SYNAPSE_REPORT_STATS=no \

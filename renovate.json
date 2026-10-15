@@ -79,6 +79,23 @@
       ],
       "matchPackageNames": ["python"],
       "allowedVersions": "<3.13"
+    },
+    {
+      "description": [
+        "qbittorrent: ignore anything from 6.x up. The dependency dashboard offered 'linuxserver/qbittorrent 5.2.4 -> 20.04.1' on 2026-10-15. 20.04.1 is not a qBittorrent version — it is an Ubuntu release number, and the real tag list for this image tops out at 5.2.4, which is what we already run. Renovate is mis-sorting one of linuxserver's compound tags (5.2.4_v2.0.15-ls480 and friends) into a plausible-looking semver.",
+        "Merging that would have pinned a tag that does not exist and broken the deploy at pull time. The cap <6 keeps real 5.x patches flowing while excluding the phantom. Revisit if qBittorrent ever genuinely reaches 6.x."
+      ],
+      "matchPackageNames": ["linuxserver/qbittorrent"],
+      "allowedVersions": "<6"
+    },
+    {
+      "description": [
+        "Homepage: stay on 1.x for now. v2.0.0 (2026-08-14) ships a '⚠️ Breaking Changes' section and this service's entire configuration is config-as-code in services/homepage/config, so a major is a config-migration exercise rather than a tag bump. Taking v1.13.2 within the major instead.",
+        "Lift this deliberately, with the v2 release notes open and the config reviewed, not as part of a backlog sweep."
+      ],
+      "matchPackageNames": ["ghcr.io/gethomepage/homepage"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
     }
   ]
 }

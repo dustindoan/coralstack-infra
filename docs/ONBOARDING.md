@@ -28,6 +28,20 @@ Per-household groups (`household-1`, `household-2`) become relevant only when yo
 
 ## 1. Register each OIDC client in Pocket ID
 
+> **Sections 1 and 2 are automated once `POCKET_ID_API_KEY` is set in `.env`.**
+> `setup.sh` reconciles every declaration in `services/pocket-id/clients/`
+> against Pocket ID's REST API on each run — creating what is missing, minting a
+> secret, and writing both values into the consuming service's `.env`. Clients
+> already wired are left untouched; an existing secret is never rotated. See
+> `services/pocket-id/clients/_README.md`.
+>
+> The groups in section 0.5 above still have to exist first, and which groups a
+> client allows is still set in the admin UI — that part is not managed as code.
+>
+> Keep reading if you are bootstrapping before the key exists, recovering by
+> hand, or want to understand what the declarations actually mean.
+
+
 In Pocket ID's admin UI, go to **OIDC Clients** → **Add Client** for each service below. You'll get back a `client_id` and `client_secret` for each — save them somewhere (you'll paste them into the service in a minute). Every client needs **Allowed groups: `members`** so authenticated users are actually authorized.
 
 ### Vaultwarden

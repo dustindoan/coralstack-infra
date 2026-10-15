@@ -1,0 +1,14 @@
+# Jellyfin — media, member-facing. SSO via the SSO-Auth plugin, which also
+# gates Live TV and per-user permissions on each login (see MAC_MINI.md's
+# sibling note in docs/ONBOARDING.md).
+CLIENT_ID=d8605f4c-bde5-4b5b-b73c-fa5eaba25f1a
+CLIENT_NAME=Jellyfin
+CALLBACK_URLS=https://media.${BASE_DOMAIN}/sso/OID/redirect/pocket-id
+# The plugin appends a dead duplicate provider if the name field is not exactly
+# "pocket-id", which is why that string is load-bearing in the callback above.
+PKCE=true
+GROUP_RESTRICTED=true
+REQUIRES_SERVICE=jellyfin
+TARGET_ENV=services/jellyfin/.env
+ID_KEY=JELLYFIN_OIDC_CLIENT_ID
+SECRET_KEY=JELLYFIN_OIDC_CLIENT_SECRET

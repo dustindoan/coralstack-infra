@@ -70,6 +70,15 @@
       "description": "MinIO uses RELEASE.date tags.",
       "matchPackageNames": ["minio/minio"],
       "versioning": "regex:^RELEASE\\.(?<major>\\d{4})-(?<minor>\\d{2})-(?<patch>\\d{2})T\\d{2}-\\d{2}-\\d{2}Z$"
+    },
+    {
+      "description": [
+        "Python images: HOLD BELOW 3.13. Measured 2026-10-15 by building both music images on 3.14 — services/music/Dockerfile (beets 2.12.0) builds fine, but services/music/Dockerfile.poll (streamrip 2.1.0) FAILS: streamrip pins a Pillow with no cp314 wheel, so pip builds it from source and slim-bookworm carries no C headers to do that with. Loud at build time rather than silent at runtime, but it would block any rebuild of the Qobuz poller.",
+        "Fixes considered and rejected. Adding gcc/libjpeg-dev/zlib1g-dev bloats an image whose only job is extracting Qobuz's app_id/secret via QobuzSpoofer. Bumping streamrip abandons the version validated end-to-end on 2026-07-15 (its login is broken upstream — Qobuz #954/#956 — and only QobuzSpoofer is reused). Splitting the two files onto different Pythons works but leaves a divergence Renovate re-proposes forever and a human re-decides every time. Nothing needs 3.14 and 3.12 is supported into 2028, so both stay put.",
+        "LIFT THIS when streamrip's dependency tree carries a cp314 Pillow. Closed PR #30 is the record."
+      ],
+      "matchPackageNames": ["python"],
+      "allowedVersions": "<3.13"
     }
   ]
 }

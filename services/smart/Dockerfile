@@ -12,7 +12,7 @@
 # Base = alpine rather than one of the app images: this container has no
 # relationship to any service's data, and a small base keeps a container that
 # needs raw block-device access as boring as possible.
-FROM alpine:3.21
+FROM alpine:3.24
 
 # https://github.com/aptible/supercronic/releases
 ARG SUPERCRONIC_VERSION=v0.2.33

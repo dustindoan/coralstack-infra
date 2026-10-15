@@ -27,7 +27,5 @@ interval = 172800
 # Weekly, not daily: the finding here is a stale version pin on the one host
 # where a bad update costs nothing (MAC_MINI.md's risk inversion). It needs to
 # stay visible, not to wake anybody. Weekly is a standing piece of homework.
-# NO-OP ON AUTOKUMA 2.0.0 (push monitors) — set by hand in Kuma's UI
-# until >=2.1 stable. Measured 2026-10-15; see _README.md.
 resend_interval = 7
 max_retries = 0

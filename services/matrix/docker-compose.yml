@@ -35,6 +35,14 @@ services:
   # `1.23.0`, with no `v` prefix — unlike synapse and element-web next to it.
   matrix-auth:
     image: ghcr.io/element-hq/matrix-authentication-service:1.23.0
+    # Run as the admin uid, like the *arr services (PUID/PGID in .env).
+    # MAS is distroless and ships user=65532, but it mounts BOTH its config
+    # and its keys :ro — it only ever reads. As 65532 it could not read
+    # keys/rsa.pem, which setup.sh writes as 1000 mode 600, and it died with
+    # "could not import keys from config: Permission denied (os error 13)".
+    # Measured 2026-10-15. Running as 1000 fixes that without loosening the
+    # key to 644.
+    user: "${PUID:-1000}:${PGID:-1000}"
     container_name: matrix-auth
     restart: unless-stopped
     depends_on:
@@ -50,6 +58,14 @@ services:
   # ─── Synapse ───────────────────────────────────────────────────────────────
   synapse:
     image: ghcr.io/element-hq/synapse:v1.159.0
+    # Run as the admin uid, like the *arr services (PUID/PGID in .env).
+    # The image declares no user, so it starts as root and its entrypoint
+    # chowns /data to its own uid 991 — which fights setup.sh (1000) writing
+    # homeserver.yaml there. Pinning the uid means one owner for everything
+    # under DATA_PATH: setup.sh writes it, synapse reads and writes it, and
+    # nothing chowns anything. Measured 2026-10-15: as root-then-991 it died
+    # with PermissionError on /data/log.config once the dir was admin-owned.
+    user: "${PUID:-1000}:${PGID:-1000}"
     container_name: synapse
     restart: unless-stopped
     depends_on:

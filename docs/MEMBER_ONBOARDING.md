@@ -58,6 +58,22 @@ and your photos (Step 3). Those are the two things that go on paper.
 
 That's your login for everything below.
 
+> **If you have more than one passkey, the sign-in prompt may offer the wrong
+> one.** Password managers such as Bitwarden can put themselves forward as the
+> passkey provider, and the credential they pre-select is not always the one you
+> registered here. It looks exactly like "passkeys are broken": the prompt
+> appears, you approve it, and sign-in fails anyway.
+>
+> The fix is to pick the right passkey by hand rather than accepting the default
+> — on the prompt, choose the other provider or credential and try again. If you
+> are on an iPhone or Mac and registered in Safari, the one you want is normally
+> the **iCloud Keychain / Apple Passwords** entry.
+>
+> For a third-party manager to work at all it must be enabled as a *credential
+> provider* and unlocked, which is separate from having the app installed:
+> iOS → Settings → General → AutoFill & Passwords; Android 14+ → Settings →
+> Passwords, passkeys & accounts.
+
 ## Step 2 — Set up your password vault (10 min)
 
 Your community runs its own Bitwarden-compatible password manager. It stores every

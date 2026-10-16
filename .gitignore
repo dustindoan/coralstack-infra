@@ -19,6 +19,12 @@ __pycache__/
 # real configs (services/settings/widgets/bookmarks.yaml) stay tracked.
 services/homepage/config/kubernetes.yaml
 services/homepage/config/docker.yaml
+# Same story as the two above: Homepage writes this skeleton into its config dir
+# itself and we never configure a Proxmox widget, so it is fully commented out
+# and only shows up as noise in `git status`. It contains NO credential — the
+# `token:`/`secret:` lines are Homepage's own commented examples, which is easy
+# to misread as a live secret.
+services/homepage/config/proxmox.yaml
 services/homepage/config/custom.css
 services/homepage/config/custom.js
 services/homepage/config/logs/

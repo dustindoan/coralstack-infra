@@ -18,6 +18,8 @@
 # pre-recreation container IP, and docker recycles those. Remedy is a restart
 # of uptime-kuma AND THEN autokuma. See MONITORING.md.
 type = "http"
+# The id from ntfy.toml.template's FILENAME, not its display name.
+notification_name_list = ["ntfy"]
 name = "Edge TLS (Caddy, in-network)"
 url = "https://id.${BASE_DOMAIN}"
 interval = 120

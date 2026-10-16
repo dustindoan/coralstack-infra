@@ -5,6 +5,8 @@
 # 48h heartbeat against a daily check: one missed run is tolerated, two is a
 # finding. Same tolerance as the SMART monitors.
 type = "push"
+# The id from ntfy.toml.template's FILENAME, not its display name.
+notification_name_list = ["ntfy"]
 name = "Deploy drift (apps VM)"
 push_token = "${DRIFT_PUSH_TOKEN}"
 interval = 172800

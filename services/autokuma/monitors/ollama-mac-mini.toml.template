@@ -11,6 +11,8 @@
 # 48h heartbeat against a daily 06:35 check: one missed run is tolerated, two
 # is a finding. Same tolerance as the SMART and drift monitors.
 type = "push"
+# The id from ntfy.toml.template's FILENAME, not its display name.
+notification_name_list = ["ntfy"]
 name = "Ollama reconcile (Mac mini)"
 push_token = "${OLLAMA_MINI_PUSH_TOKEN}"
 interval = 172800

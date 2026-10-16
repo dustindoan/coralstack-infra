@@ -404,7 +404,7 @@ if [[ -f services/autokuma/.env ]]; then
 	for f in services/autokuma/monitors/*.toml.template; do
 		[[ -e "$f" ]] || continue
 		out="$autokuma_out/$(basename "$f" .template)"
-		envsubst '$BASE_DOMAIN $BACKUP_PUSH_TOKEN $SMART_APPS_PUSH_TOKEN $SMART_HOST_PUSH_TOKEN $DRIFT_PUSH_TOKEN $OLLAMA_MINI_PUSH_TOKEN' \
+		envsubst '$BASE_DOMAIN $BACKUP_PUSH_TOKEN $SMART_APPS_PUSH_TOKEN $SMART_HOST_PUSH_TOKEN $DRIFT_PUSH_TOKEN $OLLAMA_MINI_PUSH_TOKEN $NTFY_TOPIC' \
 			< "$f" > "$out"
 		rendered=$((rendered + 1))
 	done

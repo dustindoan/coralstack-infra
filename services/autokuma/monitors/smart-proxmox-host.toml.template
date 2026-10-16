@@ -3,6 +3,8 @@
 # This one posts via the PUBLIC status URL: the host isn't on the coralstack
 # docker network.
 type = "push"
+# The id from ntfy.toml.template's FILENAME, not its display name.
+notification_name_list = ["ntfy"]
 name = "SMART (Proxmox host)"
 push_token = "${SMART_HOST_PUSH_TOKEN}"
 interval = 172800

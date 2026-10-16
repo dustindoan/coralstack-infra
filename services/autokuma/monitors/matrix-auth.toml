@@ -1,4 +1,6 @@
 type = "http"
+# The id from ntfy.toml.template's FILENAME, not its display name.
+notification_name_list = ["ntfy"]
 name = "Matrix auth (MAS)"
 # The OIDC discovery document. Chosen over a bare / because it is the exact
 # thing Element fetches to start a login: if this 200s, the auth chain's first

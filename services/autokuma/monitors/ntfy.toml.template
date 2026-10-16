@@ -1,0 +1,29 @@
+# The ntfy notification channel, as code.
+#
+# UNDOCUMENTED BUT VERIFIED (2026-10-15): AutoKuma's docs show notifications
+# only as Docker labels, and this stack runs file-only
+# (AUTOKUMA__DOCKER__ENABLED=false, deliberately — no second holder of
+# docker.sock). The file source turns out to handle them anyway: dropping a
+# `type = "notification"` file in here created one, updated it on edit, and
+# DELETED it when the file was removed. So no label mode and no docker.sock.
+#
+# THE FILENAME IS THE ID. Monitors reference this as
+# `notification_name_list = ["ntfy"]` — the AutoKuma id, NOT the display `name`
+# below. Referencing the display name fails to resolve, and an unresolvable
+# name makes AutoKuma DELETE the monitor rather than warn (measured: monitor
+# #14 was deleted and came back as #15 with no heartbeat history).
+#
+# PRIORITIES ARE COPIED AS-IS, 5/5, which MONITORING.md flags as the shape of a
+# channel that eventually gets muted — recoveries page as urgently as failures.
+# Left unchanged on purpose: this change moves the channel into code, and
+# changing its behaviour at the same time would leave it unclear which half
+# caused any surprise. Lower ntfyPriority deliberately, as its own change.
+#
+# The topic IS the credential on ntfy.sh with auth `none` — readable AND
+# publishable by anyone holding it — so it is a Tier-2 secret and arrives via
+# envsubst from NTFY_TOPIC in the root .env, exactly like the push tokens.
+type = "notification"
+name = "CoralStack ntfy"
+active = true
+is_default = true
+config = '{"type":"ntfy","name":"CoralStack ntfy","ntfyserverurl":"https://ntfy.sh","ntfytopic":"${NTFY_TOPIC}","ntfyAuthenticationMethod":"none","ntfyPriority":5,"ntfyPriorityDown":5,"ntfyUseTemplate":false,"isDefault":true,"applyExisting":false}'

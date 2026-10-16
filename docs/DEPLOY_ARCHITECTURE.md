@@ -37,8 +37,15 @@ automates either today**:
   compose file. The images themselves are built and published by *upstream*
   (Jellyfin, Ente, …); Renovate just notices newer ones exist. There is no
   "build" step to automate — 90% of the stack is upstream images, and the few
-  custom images (caddy, admin-panel, backup, ente-janitor) build *on the box* at
-  `compose up --build`.
+  custom images (caddy, admin-panel, backup, ente-janitor) build *on the box*.
+  `setup.sh` builds them with `--build` on every deploy, but only after
+  exporting `BUILDX_NO_DEFAULT_ATTESTATIONS=1`. Without that variable a fully
+  cached rebuild still produces a new image id — Docker's default provenance
+  attestation changes the digest even when the config and layers are
+  byte-identical — so compose recreates the container, and recreating caddy
+  hands it a new bridge IP that a long-running Uptime Kuma keeps probing at the
+  old address. Measured 2026-10-15; see MONITORING.md and the comment above the
+  build in `setup.sh`.
 - **Nothing propagates `main` → box.** Merging a PR changes GitHub, not
   coralstack-apps. The box only changes when a human SSHes in and pulls. Merge
   and deploy are two separate acts, and **only the first is visible on GitHub** —
@@ -64,7 +71,9 @@ deploy(ref):
   preflight:  render `docker compose config` for the target ref; refuse on error
   snapshot:   if any stateful service (ente/vaultwarden/pocket-id/postgres) will
               change, run backup.sh FIRST (a way back — see BACKUPS.md)
-  apply:      git checkout <ref>; docker compose pull; docker compose up -d --build
+  apply:      git checkout <ref>; docker compose pull; ./setup.sh
+              (setup.sh exports BUILDX_NO_DEFAULT_ATTESTATIONS before --build; a
+               bare `up -d --build` recreates containers that never changed)
   verify:     per-service health check (see APP_UPDATES.md open question 3)
   on failure: roll back to the previous ref + `up -d`; report loudly
   report:     what changed (image diffs), health result, new box ref

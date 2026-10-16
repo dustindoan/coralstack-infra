@@ -34,16 +34,29 @@ services:
   caddy:
     build: ./caddy
     image: coralstack/caddy:cloudflare
-    # Custom-built image — don't try to pull it from a registry.
+    # Custom-built image, and NO VERSION IN THIS TAG on purpose. It is a local
+    # build name, not a registry reference: `build: ./caddy` means compose
+    # builds it when it is missing and never fetches it, so no pull_policy is
+    # needed. Renovate maintains the real version in caddy/Dockerfile's FROM
+    # lines, which it understands; it cannot see this string, so a version here
+    # is a label nothing updates. It had drifted to claiming 2.11.2 while the
+    # binary inside was 2.11.7 (verified with `docker exec caddy caddy
+    # version`). The version lives in the Dockerfile.
     #
-    # NO VERSION IN THIS TAG, on purpose. It is a local build name, not a
-    # registry reference: `build: ./caddy` plus `pull_policy: build` means
-    # nothing ever fetches it. Renovate maintains the real version in
-    # caddy/Dockerfile's FROM lines, which it understands — but it cannot see
-    # this string, so a version here is a label nothing updates. It had drifted
-    # to claiming 2.11.2 while the binary inside was 2.11.7 (verified with
-    # `docker exec caddy caddy version`). The version lives in the Dockerfile.
-    pull_policy: build
+    # DO NOT add `pull_policy: build` back. It means "rebuild even when the
+    # image is already present", and a rebuild is only harmless when the
+    # resulting image id is stable — which it is NOT by default: Docker's
+    # default provenance attestation makes a fully CACHED rebuild produce a new
+    # id, and compose recreates any container whose id moved. That replaced
+    # Caddy on every deploy, handing it a new bridge IP and leaving a
+    # long-running Uptime Kuma probing the old address (see MONITORING.md).
+    #
+    # setup.sh exports BUILDX_NO_DEFAULT_ATTESTATIONS=1 and passes --build, so
+    # the deploy path rebuilds a changed context WITHOUT recreating an unchanged
+    # one. Leaving pull_policy off keeps a hand-run `docker compose up -d`,
+    # which does not have that variable set, from reintroducing the churn: it
+    # reuses the local image instead. Worst case is a stale image, which the
+    # next ./setup.sh corrects — a better failure than a false page.
     container_name: caddy
     restart: unless-stopped
     ports:

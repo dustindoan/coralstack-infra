@@ -143,7 +143,7 @@ else
 		# notification definitions (AUTOKUMA__STATIC_MONITORS is one path, and
 		# AutoKuma's file source handles both entity types from it), and those
 		# are not monitors — counting them reported "15 declared, 14 live" and
-		# took this very monitor down on 2026-10-16. Exclude by declared type.
+		# took this very monitor down on 2026-10-15. Exclude by declared type.
 		declared="$(grep -LE '^[[:space:]]*type[[:space:]]*=[[:space:]]*"notification"' \
 			$(find "$MONITOR_DIR" -maxdepth 1 -type f \( -name '*.toml' -o -name '*.toml.template' \) 2>/dev/null) \
 			2>/dev/null | wc -l | tr -d ' ')"

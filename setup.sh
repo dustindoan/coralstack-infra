@@ -687,28 +687,48 @@ if grep -qE '^\s*-\s*services/jellyfin/' docker-compose.yml && [[ -f "$jellyfin_
 fi
 
 # ─── Bring it up ─────────────────────────────────────────────────────────────
-# `docker compose up` pulls registry images and builds a service with a build:
-# directive THE FIRST TIME. It does NOT rebuild one whose context has since
-# changed — which is why --build is passed explicitly below. The old wording
-# here ("handles pull + build transparently") is precisely the belief that let a
-# merged script sit un-deployed inside a cached image.
-log "Starting the stack (first run builds custom Caddy image, ~2 min)"
-
-# --build, NOT a bare `up -d`. Seven services build from a local context
-# (caddy, drift, smart, backup, music, ente-janitor, admin-panel) and COPY
-# their scripts into the image. A bare `up -d` reuses the cached image, so a
-# script change could be merged, pulled onto the box, and still not be RUNNING:
-# measured 2026-10-16, drift-check.sh was three of those and
-# `docker exec drift grep <new code>` returned 0 while the repo had it. That is
-# merged-but-not-deployed one layer lower than usual — repo and box agreeing on
-# the FILE and disagreeing on the IMAGE — and drift's own check cannot catch it,
-# because it compares the repo to origin/main and to Kuma, never to the running
-# image. Compose only rebuilds contexts that actually changed, so this is cheap.
+# `docker compose up` builds a service with a build: directive THE FIRST TIME
+# and then reuses the cached image, so a changed context can be merged, pulled
+# onto the box, and still not be RUNNING: measured 2026-10-15, drift-check.sh
+# was exactly that — `docker exec drift grep <new code>` found nothing while
+# the repo had it. Repo and box agreed on the FILE and disagreed on the IMAGE,
+# and drift's own check cannot catch it, because it compares the repo to
+# origin/main and to Kuma, never to the running image. Hence --build.
 #
-# Caddy's container id is captured either side: recreating Caddy gives it a new
-# bridge IP, and a long-running Uptime Kuma keeps probing the old one until it
-# is restarted — see MONITORING.md. Automating that below means a deploy stops
-# leaving a monitor down.
+# BUILDX_NO_DEFAULT_ATTESTATIONS is what makes --build safe to run every time.
+# Docker attaches a provenance attestation to every build by default, recording
+# when and how the build ran. Under the containerd image store that rides along
+# in the image index, so a rebuild in which EVERY layer is CACHED still yields a
+# new image id — and compose recreates any container whose image id moved. So
+# Caddy was replaced on EVERY deploy, taking a new bridge IP each time, which a
+# long-running Uptime Kuma keeps probing at the old address: a false DOWN with
+# no change behind it (see MONITORING.md).
+#
+# Measured 2026-10-15. Two consecutive cached builds produced a byte-identical
+# config blob and identical layer digests, differing only in the attestation;
+# three builds with this variable set produced ONE id, two without it produced
+# two. The timestamp is a red herring — `created` was already identical across
+# builds without it, and pinning SOURCE_DATE_EPOCH did not help.
+#
+# Compose's own `build.provenance: false` is NOT a substitute: compose v5.1.3
+# accepts the field and ignores it (measured — ids still moved). Nor does
+# putting the variable in .env, which compose does not pass to the builder. It
+# has to be exported here.
+#
+# Nothing consumes this provenance: these images are built on the box and never
+# published to a registry, so there is no verifier to deprive — it costs an
+# audit trail of how the local image was built, which the repo plus drift's
+# repo/box agreement check already covers. If coralstack ever PUBLISHES these
+# images for other hosts, that build wants attestations ON; it is only this
+# local deploy loop that does not.
+export BUILDX_NO_DEFAULT_ATTESTATIONS=1
+
+log "Starting the stack (first run builds the custom Caddy image, ~2 min)"
+
+# Caddy's container id is captured either side. With the variable above an
+# unchanged deploy should not move it at all, but a REAL Caddy change still
+# recreates the container and still hands it a new bridge IP — so the repair
+# below stays, now firing only when something actually changed.
 caddy_id_before="$(docker inspect -f '{{.Id}}' caddy 2>/dev/null || true)"
 
 docker compose up -d --build

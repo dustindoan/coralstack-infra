@@ -462,6 +462,35 @@ when this bites: **the longer Kuma has been up, the more likely a Caddy
 recreation pages you.** Not isolated to the exact mechanism, but the remedy is
 unchanged.
 
+**It was every deploy, not every Caddy change — and the cause is Docker's
+default provenance attestation.** Measured 2026-10-15. The root compose set
+`pull_policy: build` on caddy ("rebuild even when already present"), and a
+**fully cached** rebuild still produced a new image id, so compose recreated
+the container every time. `up -d --build` does the same and is no safer.
+
+The image content was *not* changing. Two consecutive cached builds produced a
+**byte-identical config blob** and **identical layer digests**; the only
+difference was build metadata. Docker attaches a provenance attestation to
+every build by default, recording when and how it ran, and under the containerd
+image store that rides in the image index — so the digest compose keys its
+recreate decision on moves on its own.
+
+Two plausible culprits that are NOT it, both ruled out by measurement:
+
+- **The `created` timestamp.** It was already *identical* across two builds that
+  produced different ids.
+- **`SOURCE_DATE_EPOCH`.** Pinning it does clamp `created` (verified:
+  `1970-01-01T00:00:01Z`) and the ids still moved.
+
+The fix is `BUILDX_NO_DEFAULT_ATTESTATIONS=1`, which `setup.sh` exports before
+`up -d --build`: three builds with it produced one id, two without it produced
+two. Nothing consumes the provenance — these images are built on the box and
+never pushed to a registry.
+
+**Compose's `build.provenance: false` is not a substitute.** Compose v5.1.3
+accepts the field and ignores it; ids still moved. Putting the variable in
+`.env` does not work either, as compose does not pass it to the builder.
+
 It did not self-heal in five minutes; it went DOWN and fired a real
 notification. The fix:
 

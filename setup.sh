@@ -687,10 +687,52 @@ if grep -qE '^\s*-\s*services/jellyfin/' docker-compose.yml && [[ -f "$jellyfin_
 fi
 
 # ─── Bring it up ─────────────────────────────────────────────────────────────
-# docker compose up handles pull + build transparently: pulls registry images,
-# builds services with a build: directive (like our custom Caddy).
+# `docker compose up` pulls registry images and builds a service with a build:
+# directive THE FIRST TIME. It does NOT rebuild one whose context has since
+# changed — which is why --build is passed explicitly below. The old wording
+# here ("handles pull + build transparently") is precisely the belief that let a
+# merged script sit un-deployed inside a cached image.
 log "Starting the stack (first run builds custom Caddy image, ~2 min)"
-docker compose up -d
+
+# --build, NOT a bare `up -d`. Seven services build from a local context
+# (caddy, drift, smart, backup, music, ente-janitor, admin-panel) and COPY
+# their scripts into the image. A bare `up -d` reuses the cached image, so a
+# script change could be merged, pulled onto the box, and still not be RUNNING:
+# measured 2026-10-16, drift-check.sh was three of those and
+# `docker exec drift grep <new code>` returned 0 while the repo had it. That is
+# merged-but-not-deployed one layer lower than usual — repo and box agreeing on
+# the FILE and disagreeing on the IMAGE — and drift's own check cannot catch it,
+# because it compares the repo to origin/main and to Kuma, never to the running
+# image. Compose only rebuilds contexts that actually changed, so this is cheap.
+#
+# Caddy's container id is captured either side: recreating Caddy gives it a new
+# bridge IP, and a long-running Uptime Kuma keeps probing the old one until it
+# is restarted — see MONITORING.md. Automating that below means a deploy stops
+# leaving a monitor down.
+caddy_id_before="$(docker inspect -f '{{.Id}}' caddy 2>/dev/null || true)"
+
+docker compose up -d --build
+
+caddy_id_after="$(docker inspect -f '{{.Id}}' caddy 2>/dev/null || true)"
+if [[ -n "$caddy_id_before" && -n "$caddy_id_after" && "$caddy_id_before" != "$caddy_id_after" ]]; then
+	log "Caddy was recreated — restarting Uptime Kuma so it stops probing the old IP"
+	if docker compose ps --services 2>/dev/null | grep -qx uptime-kuma; then
+		docker compose restart uptime-kuma >/dev/null 2>&1 || true
+		# Wait for HEALTHY, never a fixed sleep: restarting AutoKuma before Kuma
+		# is ready is what left it disconnected for 2h on 2026-08-30, and an
+		# 8-second gap produced a screenful of EngineIO errors on 2026-10-15.
+		for _ in $(seq 1 20); do
+			case "$(docker compose ps uptime-kuma --format '{{.Status}}' 2>/dev/null)" in
+				*healthy*) break ;;
+			esac
+			sleep 3
+		done
+		# Mandatory second half: restarting Kuma disconnects AutoKuma.
+		docker compose ps --services 2>/dev/null | grep -qx autokuma \
+			&& docker compose restart autokuma >/dev/null 2>&1 || true
+		log "  Kuma and AutoKuma restarted"
+	fi
+fi
 
 log "Stack is up. Check status with: docker compose ps"
 echo

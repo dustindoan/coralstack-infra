@@ -1,4 +1,6 @@
 type = "http"
+# The id from ntfy.toml.template's FILENAME, not its display name.
+notification_name_list = ["ntfy"]
 name = "Ente (museum API)"
 url = "http://ente-museum:8080/ping"
 interval = 60

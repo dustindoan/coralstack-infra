@@ -6,6 +6,8 @@
 # one missed run before alerting — long enough not to cry wolf over a single
 # slow night, short enough that two consecutive failures are not silent.
 type = "push"
+# The id from ntfy.toml.template's FILENAME, not its display name.
+notification_name_list = ["ntfy"]
 name = "Nightly backup"
 push_token = "${BACKUP_PUSH_TOKEN}"
 interval = 172800

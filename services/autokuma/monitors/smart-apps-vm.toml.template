@@ -2,6 +2,8 @@
 # Pushes status=down WITH the finding text, so an alert names the drive and
 # the reason rather than just going red. See docs/HARDWARE_FAILURE.md.
 type = "push"
+# The id from ntfy.toml.template's FILENAME, not its display name.
+notification_name_list = ["ntfy"]
 name = "SMART (apps VM)"
 push_token = "${SMART_APPS_PUSH_TOKEN}"
 interval = 172800

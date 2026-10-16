@@ -1,4 +1,6 @@
 type = "http"
+# The id from ntfy.toml.template's FILENAME, not its display name.
+notification_name_list = ["ntfy"]
 name = "Matrix (Synapse)"
 # Synapse's own liveness endpoint. Answers without auth and without touching
 # the database, so it proves the process is up — pair it with the MAS monitor

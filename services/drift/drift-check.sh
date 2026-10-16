@@ -139,7 +139,14 @@ else
 	# ${DATA_PATH} — comparing against the repo also catches a setup.sh that
 	# was never re-run after a pull.
 	if [[ -d "$MONITOR_DIR" && -r "$KUMA_DB" ]]; then
-		declared="$(find "$MONITOR_DIR" -maxdepth 1 -type f \( -name '*.toml' -o -name '*.toml.template' \) 2>/dev/null | wc -l | tr -d ' ')"
+		# Count MONITOR definitions only. The same directory also holds
+		# notification definitions (AUTOKUMA__STATIC_MONITORS is one path, and
+		# AutoKuma's file source handles both entity types from it), and those
+		# are not monitors — counting them reported "15 declared, 14 live" and
+		# took this very monitor down on 2026-10-16. Exclude by declared type.
+		declared="$(grep -LE '^[[:space:]]*type[[:space:]]*=[[:space:]]*"notification"' \
+			$(find "$MONITOR_DIR" -maxdepth 1 -type f \( -name '*.toml' -o -name '*.toml.template' \) 2>/dev/null) \
+			2>/dev/null | wc -l | tr -d ' ')"
 		# A read failure here is not drift — say so rather than alarming.
 		if actual="$(sqlite3 "$KUMA_DB" 'select count(*) from monitor;' 2>/dev/null)" && [[ -n "$actual" ]]; then
 			if [[ "$declared" != "$actual" ]]; then

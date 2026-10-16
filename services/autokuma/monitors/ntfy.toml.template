@@ -13,11 +13,21 @@
 # name makes AutoKuma DELETE the monitor rather than warn (measured: monitor
 # #14 was deleted and came back as #15 with no heartbeat history).
 #
-# PRIORITIES ARE COPIED AS-IS, 5/5, which MONITORING.md flags as the shape of a
-# channel that eventually gets muted — recoveries page as urgently as failures.
-# Left unchanged on purpose: this change moves the channel into code, and
-# changing its behaviour at the same time would leave it unclear which half
-# caused any surprise. Lower ntfyPriority deliberately, as its own change.
+# PRIORITIES: 5 for failures, 3 for recoveries. Read from Kuma's own provider
+# (server/notification-providers/ntfy.js) rather than inferred from the field
+# names, because getting it backwards would silence FAILURES:
+#
+#   let priority = notification.ntfyPriority || 4;        <- the BASE, used on UP
+#   if (status === DOWN) priority = notification.ntfyPriorityDown || ...
+#
+# So ntfyPriority is the recovery/base priority and ntfyPriorityDown is the
+# failure one. Both were 5 — ntfy's max, which bypasses Do Not Disturb — so a
+# single flap paged twice at maximum urgency, which MONITORING.md calls the road
+# to a muted channel. Failures stay at 5. Recoveries drop to 3 (ntfy's default):
+# still delivered, no longer breaking through silent mode.
+#
+# Note line 57 of that provider: Kuma's "Test" button sends at ntfyPriority, the
+# BASE. So a test send now arrives at 3, not 5 — that is expected, not a fault.
 #
 # The topic IS the credential on ntfy.sh with auth `none` — readable AND
 # publishable by anyone holding it — so it is a Tier-2 secret and arrives via
@@ -26,4 +36,4 @@ type = "notification"
 name = "CoralStack ntfy"
 active = true
 is_default = true
-config = '{"type":"ntfy","name":"CoralStack ntfy","ntfyserverurl":"https://ntfy.sh","ntfytopic":"${NTFY_TOPIC}","ntfyAuthenticationMethod":"none","ntfyPriority":5,"ntfyPriorityDown":5,"ntfyUseTemplate":false,"isDefault":true,"applyExisting":false}'
+config = '{"type":"ntfy","name":"CoralStack ntfy","ntfyserverurl":"https://ntfy.sh","ntfytopic":"${NTFY_TOPIC}","ntfyAuthenticationMethod":"none","ntfyPriority":3,"ntfyPriorityDown":5,"ntfyUseTemplate":false,"isDefault":true,"applyExisting":false}'

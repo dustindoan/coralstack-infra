@@ -41,3 +41,39 @@
 # 2026-08-14. It is the conversion the 2026-10-16 spike measured, so keeping it
 # is what makes that spike's numbers transferable to this install.
 mlx-community/Qwen3.8-27B-nvfp4@5ff8ef1
+
+# THE MTP-HEADED CONVERSION, and the reason it is here. Measured on the live
+# box 2026-10-16, Ollama's own server log:
+#
+#   msg="speculative decode stats" iterations=60 drafted=120 accepted=100
+#   acceptance=0.83
+#
+# That is Ollama getting ~1.8 accepted tokens per decode step out of the MTP
+# head, and decode is what the household feels. The conversion above cannot do
+# it — not because oMLX lacks the machinery (0.7.0 spent most of its release
+# notes on "Exact Lightning MTP" and fused kernels for MTP verify windows,
+# specifically on Qwen3.8-27B) but because the head was stripped in the
+# convert. The weight map is the proof: 0 MTP keys of 1,682 above, against 29
+# of 2,209 here, including language_model.mtp.fc.weight.
+#
+# Published by the oMLX author in oMLX's own oQ format, 4.887 effective
+# bits/weight, imatrix-quantised with KL-divergence tables against BF16 on the
+# model card, and essentially the same size as the nvfp4 convert — so this
+# costs nothing in memory. An oQ6e-mtp also exists at 22 GB
+# (dc2eaae3f1ed016a42f5e7320d5f639e1b9acf20) and would still fit, if 4.887
+# bits turns out to cost quality the household notices.
+#
+# Quantised with oMLX v0.7.1's Improved oQe (jundot/omlx#4385), which is why
+# the server pin matters: versions.env pins 0.7.1rc1, upstream's current
+# release, so this checkpoint's format is the one the server was built for. An
+# earlier draft pinned the server at 0.7.0 and this model at its older
+# 2026-08-17 revision (04dc5509) to match; that pairing is the fallback if
+# 0.7.1rc1 ever has to be rolled back, and the older revision has measurably
+# worse KL divergence per the model card's own table.
+#
+# BOTH CONVERSIONS ARE DECLARED so decode can be measured on each — the whole
+# question is what the MTP head is worth here, and that needs two numbers from
+# the same box. Same pattern as the qwen3.6/3.8 changeover in models.txt. Drop
+# the loser once the measurement is in; do not leave 30 GB of models declared
+# forever.
+Jundot/Qwen3.8-27B-oQ4e-mtp@49c1d60

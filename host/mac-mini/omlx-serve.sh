@@ -63,9 +63,10 @@ fi
 
 # Pinned rather than left on the upstream default of 8000, so an upstream
 # change cannot silently move the port Open WebUI and the client are configured
-# against. Exported, not passed as a flag, because --port is not a documented
-# flag while OMLX_PORT is a documented variable.
-export OMLX_PORT="${OMLX_PORT:-8000}"
+# against. Passed as --port, which 0.7.0's `serve --help` does list — an
+# earlier draft of this file used the OMLX_PORT variable on the strength of the
+# README, which documents a newer build than the pin.
+OMLX_PORT="${OMLX_PORT:-8000}"
 
 MODEL_DIR="${OMLX_MODEL_DIR:-$HOME/.omlx/models}"
 CACHE_DIR="${OMLX_SSD_CACHE_DIR:-$HOME/.omlx/cache}"
@@ -73,8 +74,8 @@ CACHE_MAX="${OMLX_SSD_CACHE_MAX_SIZE:-40GB}"
 mkdir -p "$MODEL_DIR" "$CACHE_DIR"
 
 exec "$OMLX_CLI" serve \
-	--headless \
 	--host 0.0.0.0 \
+	--port "$OMLX_PORT" \
 	--model-dir "$MODEL_DIR" \
 	--paged-ssd-cache-dir "$CACHE_DIR" \
 	--paged-ssd-cache-max-size "$CACHE_MAX" \
@@ -85,11 +86,22 @@ exec "$OMLX_CLI" serve \
 
 # ─── Why each flag ───────────────────────────────────────────────────────────
 #
-# --headless
-#   Serves the inference AND admin APIs with no web UI. The admin API is how
-#   the reconcile downloads a declared model, so headless is not a reduced
-#   mode — it is the whole server minus a dashboard nobody can reach on a
-#   headless box anyway.
+# NO --headless, AND THE REASON IS A LESSON ABOUT READING DOCS. The README on
+# the project's default branch documents `--headless` to serve the APIs without
+# the web UI, and an earlier draft of this file passed it. It DOES NOT EXIST in
+# 0.7.0 — `serve --help` on the installed binary lists every other flag here
+# and not that one, so the README describes a newer build than the pin. The
+# flag check in install.sh caught it before this became a KeepAlive crash loop,
+# which is exactly what that check is for. Read the installed binary's help,
+# not the docs for `main`.
+#
+# CONSEQUENCE WORTH KNOWING: 0.7.0 has no way to switch the UI off, so the
+# admin dashboard at /admin and the chat UI at /admin/chat are served on the
+# same port as the API. With --host 0.0.0.0 that is reachable from the
+# household LAN. The API key is required for the API; whether a browser can
+# reach /admin without it is verified separately and recorded in
+# docs/MAC_MINI.md. If it is open, the options are a loopback bind plus a
+# proxy, or moving the pin to 0.7.1 once that is a stable release.
 #
 # --host 0.0.0.0
 #   Same exposure Ollama already has on 11434, except oMLX refuses a

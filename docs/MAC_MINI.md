@@ -440,6 +440,40 @@ existing:
 > without the key is unverified. If it is open, the options are a loopback bind
 > behind a proxy, or `--headless` if 0.7.1rc1 has it.
 
+### The cutover took seven attempts, and every failure reported success
+
+Worth recording in full, because the shape is this host's recurring theme: not
+one of these announced itself. The install printed a success message each time,
+and the box was in a different state than the message claimed.
+
+| What failed | How it looked | What it was |
+| --- | --- | --- |
+| `--hot-cache-max-size 20%` | "oMLX agent bootstrapped", nothing serving | The percentage form is in the README; 0.7.1rc1 rejects it. Its own help gives the default as `0 (disabled)`, so omitting the flag would have silently shipped the in-memory tier switched **off** |
+| `--cutover` not verifying | Success printed over a `KeepAlive` crash loop | launchd accepting a job is not the same as a server answering. It now polls `/v1/models` for 180s and fails **back** to Ollama rather than leaving nothing up |
+| `bootstrap` after `bootout` | Agent silently absent from `launchctl list` | "Bootstrap failed: 5: Input/output error" while the old job was still unloading, and the exit status was discarded |
+| The env agent's self-heal | Ollama back seconds after being stopped | `ps eww` on a *dying* PID returns nothing, so "missing its env vars" and "no longer exists" were indistinguishable — and the remedy is `open -a Ollama` |
+| `launchctl bootout` of the login item | Ollama back 2-40s later, PPID 1 | Booting out a service launchd keeps alive gets it relaunched once, and the `disable` override does not prevent it. `disable` alone, with no bootout, is both sufficient and durable across reboots |
+| **The reconcile itself** | Ollama back, *after* the cutover's own post-stop check passed | **`ollama list` against a stopped server does not fail — the CLI launches the Mac app to satisfy it.** The reconcile is install.sh's last step, so every cutover stopped Ollama and then started it again |
+
+**That last one is the instructive one.** For six runs the evidence pointed
+squarely at launchd: the revived process had PPID 1, arrived via
+`runningboardd`, and `launchctl print-disabled` confirmed the login item was
+disabled — so three fixes went into the launchd machinery, each plausible, each
+removing a real bug, none of them the cause. What settled it was stopping
+Ollama **by hand** with nothing else running and watching it stay down for 60
+seconds. The difference between that and the script was not launchd at all.
+
+A monitoring script that starts an 18 GB runtime as a side effect of checking
+on it is worse than no check, on a box where two runtimes do not fit. Liveness
+is now probed with `curl` against `/api/tags`, the version is read from
+`Ollama.app`'s `Info.plist` when the server is down, and every remaining CLI
+call requires the server to already be up.
+
+> **The transferable rule:** on this host, verify the box is in the state the
+> script says it is in. Every incident in this document — the June version lag,
+> the 28-day silence, the merged-but-not-deployed pattern, and all seven of
+> these — is a gap between a success message and reality.
+
 ### Binding, the key, and the cache
 
 `--host 0.0.0.0`, the same exposure Ollama already has on 11434 — except oMLX

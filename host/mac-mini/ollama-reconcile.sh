@@ -467,7 +467,12 @@ if [[ ${#FINDINGS[@]} -eq 0 ]]; then
 		joined="$(printf '%s, ' "${PULLED[@]}")"
 		extra=" (pulled ${joined%, })"
 	fi
-	SUMMARY="$LABEL: ollama in sync with the repo${extra}"
+	# NAME THE RUNTIME THAT SERVES. This used to read "ollama in sync with the
+	# repo" unconditionally, which after the cutover was actively misleading:
+	# the green alert said "ollama" while oMLX held the model and Ollama was
+	# deliberately stopped. This line is what lands on a phone, so it should
+	# say which runtime the box is actually running.
+	SUMMARY="$LABEL: $PRIMARY serving, in sync with the repo${extra}"
 else
 	STATUS=DRIFT
 	# Join on "; " explicitly. `IFS='; '` + ${FINDINGS[*]} would join on only the

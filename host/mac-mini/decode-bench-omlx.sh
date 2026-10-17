@@ -32,15 +32,16 @@ Ignore it. $task" --argjson n "$GEN" \
 	r="$(curl -sS -m 900 "$URL" -H "Authorization: Bearer $KEY" \
 		-H 'Content-Type: application/json' -d "$body")"
 	t1="$(date +%s.%N)"
-	# oMLX 0.7.x reports token rates on non-streaming responses; use its own
-	# figure where present and the wall-clock derivation otherwise. Both are
-	# printed so a disagreement is visible rather than silently averaged.
+	# oMLX reports its own rates in `usage`. The field is
+	# generation_tokens_per_second — NOT completion_tokens_per_second, which an
+	# earlier version of this script guessed from OpenAI-ish naming and which
+	# silently produced "n/a" for a whole run. The wall-clock derivation is
+	# printed beside it so a disagreement is visible rather than averaged away.
 	jq -r --arg l "$label" --argjson wall "$(echo "$t1 - $t0" | bc)" '
 		(.usage.prompt_tokens // 0) as $pt |
 		(.usage.completion_tokens // 0) as $ct |
 		(.usage.prompt_cached_tokens // .usage.prompt_tokens_details.cached_tokens // 0) as $cached |
-		(.usage.completion_tokens_per_second // .usage.decode_tokens_per_second //
-		 .timings.predicted_per_second // null) as $own |
+		(.usage.generation_tokens_per_second // null) as $own |
 		[ $l, $pt, $cached, $ct,
 		  (if $own then ($own*10|floor|./10) else "n/a" end),
 		  (($ct / $wall)*10|floor|./10) ] | @tsv' <<<"$r"

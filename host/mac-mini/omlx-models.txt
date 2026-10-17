@@ -1,0 +1,43 @@
+# Declared model set for oMLX on the Mac mini — one Hugging Face repo per line
+# as `repo@revision`.
+#
+# WHY A SECOND FILE rather than more lines in models.txt: these are not Ollama
+# tags and they do not reconcile the same way. An Ollama tag is resolved by the
+# registry and verified with `ollama list`; an entry here is a repo plus a
+# commit, verified against the revision recorded in the snapshot on disk. One
+# file per identifier space, so neither reconcile path has to guess which kind
+# of name it is holding.
+#
+# PIN THE REVISION, NEVER A BRANCH. `main` on a model repo is rewritten in
+# place: the numerics of a quantisation can change under you with no version to
+# bump and no release notes, and a silently different conversion is the hardest
+# kind of regression to see from a chat window. Short hashes are fine — the
+# reconcile compares prefixes.
+#
+# Renovate does NOT watch this file. There is no Hugging Face datasource in play
+# here (checked 2026-10-16 and not confirmed to exist), so unlike versions.env
+# nothing opens a PR when a repo moves. That is deliberate rather than a gap: a
+# pinned revision cannot drift, and the reconcile verifies the pin holds.
+#
+# Check a repo and revision exist before committing them:
+#   curl -sf https://huggingface.co/api/models/<repo>/revision/<rev> | jq .sha
+
+# Primary chat + agent model. Same qwen3_5 hybrid architecture and group-16
+# NVFP4 quantisation as Ollama's qwen3.8:27b-nvfp4, but a DIFFERENT conversion:
+# 15.45 GB loaded against Ollama's 18.2, and NO MTP HEAD.
+#
+# That last part is a known, accepted limitation and the whole reason the decode
+# gate in docs/MAC_MINI.md exists. oMLX 0.7.0's headline decode work is MTP-
+# based on this exact model — "Exact Lightning MTP", fused MoE/DeltaNet kernels
+# for "MTP verify windows", DFlash2 doing less work per verify cycle on
+# Qwen3.8-27B — and a conversion with no MTP head can use none of it. The file
+# list at the pinned revision confirms it: three safetensors shards and no MTP
+# weights.
+#
+# So if measured decode lands materially under Ollama's 24-30 tok/s, the first
+# thing to reach for is a DIFFERENT CONVERSION, not a different server.
+#
+# Revision 5ff8ef1 = 5ff8ef173ad0d7c3aae92f0be43031a6ab8067c6, last modified
+# 2026-08-14. It is the conversion the 2026-10-16 spike measured, so keeping it
+# is what makes that spike's numbers transferable to this install.
+mlx-community/Qwen3.8-27B-nvfp4@5ff8ef1

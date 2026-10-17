@@ -80,9 +80,35 @@ if [[ -f "$ENV_FILE" ]]; then
 	set -a; . "$ENV_FILE"; set +a
 fi
 
+# oMLX's own config, for the API key the health check needs and any path
+# overrides. A separate file because it holds a different secret with a
+# different blast radius, and because the two runtimes are installed and
+# rolled back independently.
+OMLX_ENV_FILE="${OMLX_RECONCILE_ENV:-$(dirname "$ENV_FILE")/omlx.env}"
+if [[ -f "$OMLX_ENV_FILE" ]]; then
+	# shellcheck disable=SC1090
+	set -a; . "$OMLX_ENV_FILE"; set +a
+fi
+
 MODELS_FILE="${OLLAMA_MODELS_FILE:-$HERE/models.txt}"
+OMLX_MODELS_FILE="${OMLX_MODELS_FILE:-$HERE/omlx-models.txt}"
 VERSIONS_FILE="${OLLAMA_VERSIONS_FILE:-$HERE/versions.env}"
 LABEL="${OLLAMA_HOST_LABEL:-mac-mini}"
+
+# WHICH RUNTIME IS SUPPOSED TO BE SERVING, and the reason this script has to
+# know. 48 GB cannot hold both runtimes' weights and caches, so exactly one
+# serves and the other sits installed as the rollback. Without this, the
+# stopped one reports "installed but not responding" every single morning — a
+# finding that can never be cleared, which is the one-shot-alerting bug of
+# 2026-09-17 wearing a different hat (MAC_MINI.md, "Why neither detection layer
+# reached a human"). So each runtime is judged against whether it is MEANT to
+# be answering, and a second runtime holding weights resident is itself the
+# finding, because that is the memory-thrash case.
+PRIMARY="$(sed -n 's/^MINI_PRIMARY_RUNTIME=//p' "$VERSIONS_FILE" 2>/dev/null | tr -d '"' | head -1)"
+PRIMARY="${PRIMARY:-ollama}"
+
+OMLX_APP="${OMLX_APP:-$HOME/.coralstack/oMLX.app}"
+OMLX_PORT="${OMLX_PORT:-8000}"
 
 # The Mac app's CLI. Not on a non-interactive SSH PATH, which is its own small
 # trap: `ssh mini ollama list` fails with "command not found" on a box where
@@ -103,11 +129,31 @@ NOTES=()
 PULLED=()
 
 # ─── 1. Runtime ──────────────────────────────────────────────────────────────
+# PRESENT (the binary exists) and LIVE (the server answers) are now separate.
+# They used to be one flag, which meant a stopped Ollama skipped the version
+# check too — and the version pin is a property of the installed binary, not of
+# a running server. With Ollama demoted to the rollback runtime that would have
+# silently stopped checking the thing this host's whole history is about.
+OLLAMA_LIVE=0
 if [[ -z "$OLLAMA_BIN" ]]; then
 	FINDINGS+=("no ollama binary found — is the Mac app installed?")
-elif ! "$OLLAMA_BIN" list >/dev/null 2>&1; then
+elif "$OLLAMA_BIN" list >/dev/null 2>&1; then
+	OLLAMA_LIVE=1
+elif [[ "$PRIMARY" == ollama ]]; then
 	FINDINGS+=("ollama is installed but not responding — the menu-bar app is probably not running (needs an auto-logged-in GUI session)")
-	OLLAMA_BIN=""   # every check below depends on a live server
+else
+	# Expected: it is the rollback runtime and deliberately stopped.
+	NOTES+=("ollama stopped (primary is $PRIMARY)")
+fi
+
+# A stopped Ollama is expected; one still HOLDING WEIGHTS is not. `ollama ps`
+# lists resident models, so this distinguishes "running and idle", which costs
+# nothing, from "holding 18-33 GB", which is what collides with oMLX on a 48 GB
+# box. This is the check that catches a half-finished cutover.
+if (( OLLAMA_LIVE )) && [[ "$PRIMARY" != ollama ]]; then
+	if [[ -n "$("$OLLAMA_BIN" ps 2>/dev/null | awk 'NR>1 && NF {print}')" ]]; then
+		FINDINGS+=("ollama still holds a model resident while $PRIMARY is primary — both runtimes cannot fit in 48 GB; run install.sh --cutover")
+	fi
 fi
 
 # ─── 2. A staged update nobody will ever click "Restart to update" on ────────
@@ -169,10 +215,18 @@ fi
 if [[ -n "$OLLAMA_BIN" ]]; then
 
 	# ─── 3. Version vs the pin ───────────────────────────────────────────
+	# Needs the BINARY, not a live server, which is why this sits outside the
+	# OLLAMA_LIVE guard below.
 	if [[ -r "$VERSIONS_FILE" ]]; then
 		want="$(sed -n 's/^OLLAMA_VERSION=//p' "$VERSIONS_FILE" | tr -d '"' | head -1)"
 		# "ollama version is 0.30.10" -> 0.30.10
-		have="$("$OLLAMA_BIN" --version 2>/dev/null | awk '{print $NF}' | head -1)"
+		#
+		# MATCH THE VERSION LINE, don't take the last field of line 1. With the
+		# server stopped — which is now its normal state as the rollback
+		# runtime — `ollama --version` prints a "could not connect" warning
+		# FIRST, and the old `awk '{print $NF}' | head -1` read that warning's
+		# last word as the version and reported a skew against every pin.
+		have="$("$OLLAMA_BIN" --version 2>/dev/null | sed -n 's/.*version is //p' | head -1)"
 		if [[ -n "$want" && -n "$have" && "$want" != "$have" ]]; then
 			# Not "its own updater cannot apply this": it did, unattended, on
 			# 2026-09-16 — which is how $have came to be AHEAD of the pin.
@@ -187,7 +241,13 @@ if [[ -n "$OLLAMA_BIN" ]]; then
 	# The launchd domain having the vars is NOT enough: the process must have
 	# been spawned after they were set. This is the check that catches the
 	# Login-Item race in production rather than at install time.
-	pid="$(pgrep -x ollama 2>/dev/null | head -1)"
+	#
+	# Note that oMLX needs no equivalent: its flags are arguments in a plist
+	# we own, not environment variables injected into a GUI app that a Login
+	# Item might have started first. The race this check exists for cannot
+	# happen there.
+	pid=""
+	(( OLLAMA_LIVE )) && pid="$(pgrep -x ollama 2>/dev/null | head -1)"
 	if [[ -n "$pid" ]]; then
 		procenv="$(ps eww -p "$pid" 2>/dev/null | tr ' ' '\n')"
 		missing=""
@@ -200,7 +260,12 @@ if [[ -n "$OLLAMA_BIN" ]]; then
 	fi
 
 	# ─── 5. Declared vs actual models ────────────────────────────────────
-	if [[ ! -r "$MODELS_FILE" ]]; then
+	# `ollama list` talks to the server, so this is unanswerable while Ollama
+	# is the stopped rollback runtime. Say so once rather than reporting four
+	# models as missing — they are on disk, nothing is asking.
+	if (( ! OLLAMA_LIVE )); then
+		NOTES+=("ollama model set unchecked while stopped")
+	elif [[ ! -r "$MODELS_FILE" ]]; then
 		FINDINGS+=("no models.txt at $MODELS_FILE — cannot reconcile the model set")
 	else
 		# `ollama list` first column, minus the header row.
@@ -251,6 +316,121 @@ if [[ -n "$OLLAMA_BIN" ]]; then
 				fi
 			fi
 		done <<<"$actual"
+	fi
+fi
+
+# ─── 6-11. oMLX ──────────────────────────────────────────────────────────────
+# Checked whether or not it is the primary, because an installed-but-idle oMLX
+# still has a version pin to honour and a bundle that must not have wandered
+# into /Applications. Only the "is it answering" check is conditional.
+OMLX_MODEL_DIR="${OMLX_MODEL_DIR:-$HOME/.omlx/models}"
+OMLX_SSD_CACHE_DIR="${OMLX_SSD_CACHE_DIR:-$HOME/.omlx/cache}"
+OMLX_CLI="$OMLX_APP/Contents/MacOS/omlx-cli"
+
+# 6. THE BUNDLE MUST NOT BE IN /Applications. This is the structural half of
+# the no-self-update design: the GUI binary is the only part of the bundle with
+# update-check code in it, and keeping the bundle out of the place macOS
+# launches things from is what stops it ever running. A copy appearing there
+# means someone installed oMLX the ordinary way, and the Ollama updater story
+# is back. Reported no matter which runtime is primary.
+if [[ -d /Applications/oMLX.app ]]; then
+	FINDINGS+=("/Applications/oMLX.app exists — the GUI app self-updates; this repo installs the bundle to $OMLX_APP and runs omlx-cli only")
+fi
+
+if [[ ! -x "$OMLX_CLI" ]]; then
+	if [[ "$PRIMARY" == omlx ]]; then
+		FINDINGS+=("oMLX is the declared primary but is not installed at $OMLX_APP — run install.sh --install-omlx")
+	fi
+else
+	# 7. Version vs the pin. Read from the bundle, so it needs no live server.
+	want_omlx="$(sed -n 's/^OMLX_VERSION=//p' "$VERSIONS_FILE" 2>/dev/null | tr -d '"' | head -1)"
+	have_omlx="$(defaults read "$OMLX_APP/Contents/Info" CFBundleShortVersionString 2>/dev/null || echo unknown)"
+	if [[ -n "$want_omlx" && "$have_omlx" != "$want_omlx" ]]; then
+		FINDINGS+=("oMLX $have_omlx, repo pins $want_omlx — run install.sh --install-omlx")
+	fi
+
+	# 8. Is it answering? Only when it is meant to be.
+	if [[ "$PRIMARY" == omlx ]]; then
+		if ! launchctl print "gui/$(id -u)/com.coralstack.omlx" >/dev/null 2>&1; then
+			FINDINGS+=("the oMLX LaunchAgent is not loaded — run install.sh (or --cutover if ollama still holds a model)")
+		elif ! curl -fsS -m 10 -o /dev/null \
+			-H "Authorization: Bearer ${OMLX_API_KEY:-}" \
+			"http://127.0.0.1:${OMLX_PORT}/v1/models" 2>/dev/null; then
+			# One finding, two likely causes, both named: the agent is loaded
+			# so launchd thinks it is running, which means either the process
+			# is crash-looping on a bad flag or the key does not match.
+			FINDINGS+=("oMLX agent loaded but /v1/models did not answer on :$OMLX_PORT — check ~/.coralstack/logs/omlx.log for a crash loop, and that OMLX_API_KEY matches")
+		fi
+	fi
+
+	# 9. Did anything turn the authentication off? `--host 0.0.0.0` is only
+	# safe because oMLX refuses a non-loopback bind without a key, and that
+	# refusal has an off switch in settings.json which the app can write. This
+	# is the one setting worth reading declared-vs-actual, because flipping it
+	# turns a keyed server on the LAN into an open one.
+	settings="$HOME/.omlx/settings.json"
+	if [[ -r "$settings" ]] && command -v jq >/dev/null 2>&1; then
+		if [[ "$(jq -r '.auth.allow_unauthenticated_inference // false' "$settings" 2>/dev/null)" == true ]]; then
+			FINDINGS+=("oMLX settings.json has auth.allow_unauthenticated_inference=true — the LAN bind is unauthenticated")
+		fi
+	fi
+
+	# 10. Declared models, and whether we know WHICH conversion is on disk.
+	#
+	# REPORT-ONLY, UNLIKE THE OLLAMA MODEL SET, and that is a deliberate
+	# divergence from the risk inversion in MAC_MINI.md. An `ollama pull` is
+	# one resumable, self-verifying command, so letting the timer run it costs
+	# nothing. Fetching a pinned Hugging Face revision is a multi-file ranged
+	# download whose integrity and provenance we have to establish ourselves,
+	# and the downloader lives in install.sh where a human is present for 15 GB.
+	# So: `install.sh --fetch-omlx-models` is the verb, and this only notices.
+	if [[ -r "$OMLX_MODELS_FILE" ]]; then
+		while IFS= read -r line; do
+			line="${line%%#*}"
+			line="$(echo "$line" | tr -d '[:space:]')"
+			[[ -z "$line" ]] && continue
+			repo="${line%@*}"
+			rev="${line#*@}"
+			dir="$OMLX_MODEL_DIR/$repo"
+			if [[ ! -d "$dir" ]]; then
+				FINDINGS+=("declared but not downloaded: $repo — run install.sh --fetch-omlx-models")
+			elif [[ ! -r "$dir/.coralstack-revision" ]]; then
+				# The server's own layout records no revision, so the fetcher
+				# writes one. A model with no sidecar came from somewhere else
+				# and its numerics are unknown — which is the regression that
+				# is hardest to see from a chat window.
+				FINDINGS+=("$repo is on disk with no recorded revision — re-fetch it so the pin can be verified")
+			else
+				on_disk="$(tr -d '[:space:]' < "$dir/.coralstack-revision")"
+				[[ "$on_disk" == "$rev"* || "$rev" == "$on_disk"* ]] \
+					|| FINDINGS+=("$repo is at revision $on_disk, repo pins $rev")
+			fi
+		done < "$OMLX_MODELS_FILE"
+	elif [[ "$PRIMARY" == omlx ]]; then
+		FINDINGS+=("no omlx-models.txt at $OMLX_MODELS_FILE — cannot reconcile the model set")
+	fi
+
+	# 11. The SSD cache against its declared cap. New kind of finding for this
+	# host: the cache is the feature, and it is also the only thing here that
+	# grows without bound if the cap is ever lost. ~6.4 GB per 46k-token
+	# conversation, so a cap that silently reverted to `auto` (50% of free
+	# disk) would be ~400 GB on this box before anything complained.
+	if [[ -d "$OMLX_SSD_CACHE_DIR" ]]; then
+		cache_gb=$(( $(du -sk "$OMLX_SSD_CACHE_DIR" 2>/dev/null | awk '{print $1}' || echo 0) / 1048576 ))
+		# Assumes the cap is written in GB, which is the only unit this repo
+		# ever sets it in. A cap in MB would parse as a wildly larger number
+		# and quietly disable this check.
+		cap_gb="$(echo "${OMLX_SSD_CACHE_MAX_SIZE:-40GB}" | tr -dc '0-9')"
+		if [[ -n "$cap_gb" ]] && (( cache_gb > cap_gb )); then
+			FINDINGS+=("oMLX SSD cache is ${cache_gb} GB against a ${cap_gb} GB cap — the cap is not being enforced")
+		fi
+		# Headroom relative to the declared cap, not a fixed number: the floor
+		# has to move when the cap does, or it reports nothing useful on a box
+		# sized differently from this one.
+		free_gb=$(( $(df -k "$OMLX_SSD_CACHE_DIR" | awk 'NR==2 {print $4}') / 1048576 ))
+		if [[ -n "$cap_gb" ]] && (( free_gb < cap_gb + 10 )); then
+			FINDINGS+=("${free_gb} GB free where the cache may grow to ${cap_gb} GB")
+		fi
 	fi
 fi
 

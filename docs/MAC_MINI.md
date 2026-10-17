@@ -1,16 +1,17 @@
 # The Mac mini — the host outside the deploy model
 
-> **Status (2026-10-14):** ⚠️ installed and reconciling, and the pin does not
-> hold. `host/mac-mini/` holds the mini's desired state as code, the reconcile
-> script and its launchd timer have been installed since 2026-09-03, and the
-> monitor has been **red since 2026-09-17**: the box runs Ollama 0.34.1 against
-> a pin of 0.33.3, with a further 197 MB update staged and unapplied. Nobody
-> was told, for 28 days, for two unrelated reasons — see
-> [Why neither detection layer reached a human](#why-neither-detection-layer-reached-a-human).
+> **Status (2026-10-16):** ✅ Ollama in sync, ⬜ oMLX declared but **not yet
+> installed**. The box runs Ollama 0.40.4 matching its pin, and monitor #12 went
+> green on 2026-10-15 after 28 days red. This change adds a second runtime —
+> oMLX — as the server for the primary model, declared in `host/mac-mini/` and
+> **not yet on the box**: nothing has been installed, Ollama has not been
+> stopped, and the two done-criteria in
+> [Serving the model through oMLX](#serving-the-model-through-omlx) are
+> unverified. See that section for what is measured and what is still a claim.
 >
-> *(Superseded: the 2026-09-03 status here said "nothing installed on the box
-> yet ... Ollama there is still 0.30.10". Both were true that day and neither
-> is now.)*
+> *(Superseded twice. The 2026-09-03 status said "nothing installed on the box
+> yet ... Ollama there is still 0.30.10". The 2026-10-14 status said the pin
+> did not hold, with a 197 MB update staged. Both were true on their day.)*
 
 ## Why this doc exists
 
@@ -146,6 +147,10 @@ rewrites an executable.
 | `com.coralstack.ollama-reconcile.plist` | launchd timer — runs the reconcile daily. |
 | `install.sh` | installs all of the above onto the mini. Idempotent. |
 | `ollama.env.example` | the runtime config (`HEALTHCHECK_URL`, paths) — copied to a gitignored local file at install. |
+| `omlx-models.txt` | the declared oMLX model set, as `repo@revision`. A separate file from `models.txt` because Ollama tags and Hugging Face revisions are different identifier spaces that reconcile differently. |
+| `omlx-serve.sh` | the `omlx-cli serve --headless` flags, with a justification each. The oMLX counterpart of `com.ollama.host.sh`, and much smaller because it needs none of its workarounds. |
+| `com.coralstack.omlx.plist` | launchd agent for the server itself — `RunAtLoad` + `KeepAlive`, the shape Ollama's GUI app could never have. |
+| `omlx.env.example` | oMLX's runtime config (`OMLX_API_KEY`, model and cache paths) — copied to a gitignored local file at install, with the key generated there. |
 
 ### Renovate wiring
 
@@ -233,6 +238,212 @@ The repair is in two places, and neither is Renovate:
   "has moved".
 
 
+## Serving the model through oMLX
+
+The mini's problem stopped being "is it up to date" and became "does it
+remember". One client runs two long-lived agents through Open WebUI, each
+sending ~46k tokens and appending between calls. Ollama's MLX runner keeps
+**one** prompt-prefix cache, so the two agents evict each other: in Ollama's own
+log for 2026-10-07, a 46,279-token prompt took 442 s to prefill, and a
+same-sized request 72 s later matched **2 tokens** and prefilled cold again.
+About 7 minutes per switch.
+
+[oMLX](https://github.com/jundot/omlx) keeps a paged cache per conversation and
+spills it to SSD. A runtime-only spike on 2026-10-16 measured, one call at a
+time with `max_tokens: 1`:
+
+| Call | Time | Cached tokens |
+| --- | ---: | ---: |
+| A, cold | 419 s | 0 |
+| A, one turn longer | 3.4 s | 46,164 of 46,334 |
+| B, cold | 419 s | 0 |
+| A after B | 2.9 s | 46,327 of 46,509 |
+| A after a full oMLX restart | 3.0 s | 46,502 of 46,678 |
+
+**Cold prefill is no faster** — 110 tok/s against Ollama's 105, consistent with
+the ~120 tok/s measured on 2026-10-14 being the hardware ceiling rather than
+version lag. So this is not a speed change. It buys **hit rate**: the 3-second
+column survives an agent switch and a restart, where Ollama's did not. SSD cost
+is ~6.4 GB per 46k conversation (2.9 GB of KV at 64 KB/token plus ~3.5 GB of
+Gated DeltaNet state snapshots).
+
+### The decode gate, which is the part that can still go wrong
+
+Every spike call used `max_tokens: 1`, so **oMLX's decode rate is unmeasured**,
+and the household feels decode, not prefill. Worse, the conversion in use
+(`mlx-community/Qwen3.8-27B-nvfp4`) has **no MTP head**, and oMLX 0.7.0's
+headline decode work on this exact model is MTP-based — "Exact Lightning MTP",
+fused MoE/DeltaNet kernels for "MTP verify windows", DFlash2 doing less work per
+verify cycle on Qwen3.8-27B. A conversion without the head can use none of it.
+
+So "the household chat still works" is not a sufficient criterion: a 2× decode
+regression passes it while being a real downgrade for the people who use this
+box most. **Measure decode against the 2026-10-14 baseline of 24-30 tok/s
+before the household is cut over**, same harness. If it lands materially under,
+the first thing to reach for is a different conversion, not a different server.
+
+### One runtime serves at a time, and the switch is one line
+
+48 GB does not hold both. Ollama's copy is 18.2 GB of weights reaching a 33 GB
+steady state with two 32K slots; oMLX's is 15.45 GB plus a ~9.6 GB hot cache,
+about 25 GB. Both loaded wants ~58 GB against a ~44 GiB wired ceiling.
+
+So `versions.env` carries `MINI_PRIMARY_RUNTIME`, and it is the cutover and the
+rollback both:
+
+```bash
+bash host/mac-mini/install.sh --install-omlx        # fetch + verify the bundle
+bash host/mac-mini/install.sh --fetch-omlx-models   # ~15 GB, pinned revision
+bash host/mac-mini/install.sh --cutover             # stop Ollama, start oMLX
+```
+
+`--cutover` is **the only thing in this repo that stops Ollama**, and nothing
+reaches it by accident: a plain `install.sh` run with oMLX declared primary
+installs the agent but refuses to start it while Ollama still holds a model
+resident, and prints the verb instead. Rollback is `MINI_PRIMARY_RUNTIME=ollama`
+plus a re-run, then `ENABLE_OLLAMA_API: "true"` and a redeploy on the apps VM.
+Ollama and its four models stay installed throughout — the other three
+(`qwen3.6:27b-nvfp4`, the coding MoE, `gemma4:26b-mlx`) remain declared in
+`models.txt` and reachable only by rolling back, because using one means
+stopping oMLX first.
+
+### Installed from the DMG, which reverses this file's own Homebrew decision
+
+Above, this doc records Ollama being chosen "over Homebrew because it
+auto-updates and ships the CLI" — and nearly every incident since traces to that
+sentence. The instinct to prefer a no-updater install for oMLX is right, and the
+tap defeats it for two measured reasons (2026-10-16): the formula's `url` tracked
+`v0.7.1rc1` with no versioned formulae to pin against, so `brew install` would
+ignore `versions.env` and the pin would be decorative; and its custom kernels
+need **full Xcode**, not the CLT — its own guard says "`metal` ships with Xcode,
+not the Command Line Tools" — where `qwen35_prefill` is the prefill path for
+this model's architecture and `decode_fast` the decode path. A brew build
+without Xcode silently omits both, so it would be a slower binary than the one
+the spike measured.
+
+The DMG ships those kernels precompiled and bundles its own CPython 3.11 and
+MLX, needing no toolchain. **The updater objection is answered structurally, not
+by a promise:** launchd runs `omlx-cli`, a different executable in the same
+bundle with zero update-check symbols in it against 6 in the GUI binary, and
+`install.sh` puts the bundle in `~/.coralstack/` rather than `/Applications` so
+the GUI binary cannot be reached by a double-click or a Login Item. The
+reconcile reports a copy appearing in `/Applications` as a finding.
+
+> **Install the Command Line Tools on this box anyway**, independently of the
+> above. They are absent today (`xcode-select -p` errors), which is why `git`
+> and `python3` both trigger the installer, why `install.sh`'s own "run this
+> from a checkout of this repo" cannot be followed there, and why deploying to
+> it needs the `git archive` + `scp` staging pattern. Installing them retires
+> all three workarounds and costs nothing this design depends on.
+
+### Binding, the key, and the cache
+
+`--host 0.0.0.0`, the same exposure Ollama already has on 11434 — except oMLX
+**refuses a non-loopback bind without an API key**, so this is strictly better
+than the status quo rather than a new hole. The key is generated on the box by
+`install.sh`, kept in the untracked `~/.coralstack/omlx.env`, and exported
+rather than passed as a flag, because a command line is readable by every local
+user through `ps` while a process environment is not.
+
+The SSD cache is capped at **40 GB** explicitly. The upstream default is `auto`,
+meaning 50% of free disk — about 400 GB on this box. The reconcile reports both
+the cache exceeding its cap and free space falling below it.
+
+### Models are pinned to a revision, and the pin is ours to verify
+
+`omlx-models.txt` holds `repo@revision`, never a branch: `main` on a model repo
+is rewritten in place, so a quantisation's numerics can change with no version
+to bump and no release notes. Renovate does **not** watch this file — no Hugging
+Face datasource was confirmed to exist — which is fine, because a pinned
+revision cannot drift.
+
+But oMLX's `--model-dir` layout records no revision, so a directory on disk
+cannot say which conversion it holds. `--fetch-omlx-models` therefore writes a
+`.coralstack-revision` sidecar last, after every file lands, and the reconcile
+compares it to the pin. A model present without a sidecar is a finding, not a
+pass: it came from somewhere else and its numerics are unknown.
+
+**This is a deliberate divergence from the risk inversion above**, which says
+model pulls are auto-applied on this host. That still holds for `ollama pull` —
+one resumable, self-verifying command. A pinned Hugging Face revision is a
+multi-file ranged download whose integrity and provenance we establish
+ourselves, the downloader lives in `install.sh`, and 15 GB deserves a human in
+the room. So the timer reports; a person fetches.
+
+### How Open WebUI and the client reach it
+
+Open WebUI stays the front door. It gains an OpenAI-compatible connection to
+`http://<MAC_MINI_IP>:8000/v1` with the oMLX key, and `ENABLE_OLLAMA_API` goes
+to `"false"` so the household's model picker does not offer five models where
+choosing the wrong one squeezes the box.
+
+For the client, the route changes from `/ollama/v1/chat/completions` to
+**`/openai/v1/chat/completions`**, same Open WebUI API key, same public URL
+behind the same auth. Going direct to the mini was considered and rejected: it
+would have traded away a working authenticated endpoint reachable from
+anywhere.
+
+> **One thing to measure, because it decides whether this holds.** Open WebUI is
+> a proxy, and a proxy that alters the prompt prefix destroys exactly what this
+> change buys. oMLX reports `cached_tokens` on every response, so the test is
+> two identical calls through `/openai/v1/chat/completions`: if the second
+> reports ~46k cached, the passthrough is prefix-stable and the front door
+> stays. If it reports ~0, the fix is a Caddy vhost straight to the mini's
+> `:8000`, which is additive and needs no change on the mini.
+>
+> Note the Ollama log cannot settle this on its own: a 2-token match on a
+> *different* conversation is expected whether the cause is eviction or a
+> mutating proxy. Only a return to the same conversation tells them apart, and
+> the spike measured that against oMLX directly, not through Open WebUI.
+
+Open WebUI also fires its own inference for chat titles and tags — each one a
+cold prefill on a 27B competing with a member's reply and an agent's 46k
+prefill. Both are disabled in the compose file, and both want confirming in
+Admin Settings → Interface, because Open WebUI ignores an unrecognised
+environment variable without an error.
+
+### What the reconcile now checks
+
+The same script, the same single push, the same monitor — the question "is the
+mini running what the repo says" just has two runtimes now. Added: oMLX's
+version against its pin, read from the bundle so a stopped server still answers
+it; a stray `/Applications/oMLX.app`; the agent loaded and `/v1/models`
+answering; `auth.allow_unauthenticated_inference` in `settings.json`, the one
+setting that would turn the keyed LAN bind into an open one; declared models
+present at the pinned revision; and the SSD cache against its cap.
+
+Two existing behaviours had to change, and both were latent bugs that only a
+second runtime exposed:
+
+- **`PRESENT` and `LIVE` are now separate for Ollama.** They were one flag, so a
+  stopped Ollama skipped the version check too — and the version pin is a
+  property of the installed binary, not of a running server. Demoting Ollama to
+  the rollback runtime would have silently stopped checking the thing this
+  host's entire history is about.
+- **`ollama --version` is parsed by matching the version line**, not by taking
+  the last field of line one. With the server stopped — now its normal state —
+  it prints a "could not connect" warning first, and the old parse read that
+  warning's last word as the version and reported a skew against every pin.
+
+A stopped non-primary runtime is a **note**, never a finding, because a finding
+that can never be cleared is the 2026-09-17 alerting bug wearing a different
+hat. What *is* a finding is the other runtime still holding weights resident —
+`ollama ps` non-empty while oMLX is primary — because that is the half-finished
+cutover, and the memory-thrash case.
+
+### Done means
+
+1. On the installed service, alternating between two ~46k-token conversations
+   takes a few seconds per call after each one's first call, **including after a
+   reboot**.
+2. Decode is within ~10% of Ollama's 24-30 tok/s on the 2026-10-14 harness, or
+   the regression is measured and accepted deliberately.
+3. The household's chat in Open WebUI still works, with prefix stability
+   through the passthrough confirmed by `cached_tokens`.
+4. The reconcile reports green.
+
+None of the four is verified yet. Nothing is installed on the box.
+
 ## Monitoring
 
 The reconcile script follows the same alerting contract as
@@ -300,6 +511,10 @@ SMART runner, for the same reason.
 5. ⬜ **Teach `services/drift/` about the mini** — today drift-check answers "is
    the apps VM running what the repo says." The same question now has a second
    host and no answer for it.
+5b. ⬜ **Install and prove oMLX** — declared in `host/mac-mini/` as of
+   2026-10-16, nothing on the box. The four criteria are in
+   [Done means](#done-means); the two that can still fail are decode and the
+   prefix stability of Open WebUI's passthrough.
 6. ⬜ **The NUC deploy primitive** — DEPLOY_ARCHITECTURE.md §1, still unbuilt and
    still the bigger prize. The mini's loop is the cheap rehearsal for it.
 

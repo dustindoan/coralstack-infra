@@ -1,7 +1,17 @@
-# Ollama reconcile on the MAC MINI — is the inference host running what the
-# repo says? Pushes status=down WITH the reason (version skew against the pin,
-# a missing declared model, the Login-Item env race), so the alert names the
+# Inference reconcile on the MAC MINI — is the inference host running what the
+# repo says? Pushes status=down WITH the reason (version skew against either
+# pin, a missing or wrong-revision model, the Login-Item env race, an oMLX
+# crash loop, both runtimes holding weights at once), so the alert names the
 # problem. See docs/MAC_MINI.md and host/mac-mini/ollama-reconcile.sh.
+#
+# THE FILENAME AND PUSH TOKEN STAY "ollama-mac-mini" NOW THAT THIS COVERS oMLX
+# TOO, and that is deliberate. AutoKuma keys a monitor off this file's name, so
+# renaming the file deletes monitor #12 and creates a new one — throwing away
+# the heartbeat history that is the primary evidence in three sections of
+# MAC_MINI.md, including the 28-day silence that `resend_interval` below exists
+# to fix. A slightly stale filename is cheaper than losing the record. Rename
+# it in the change that actually retires Ollama, where the push token and the
+# mini's ~/.coralstack/ollama.env can be migrated on purpose.
 #
 # The mini is NOT on the coralstack docker network, so unlike the other push
 # monitors its heartbeat arrives via the public status URL and hairpins back
@@ -13,7 +23,7 @@
 type = "push"
 # The id from ntfy.toml.template's FILENAME, not its display name.
 notification_name_list = ["ntfy"]
-name = "Ollama reconcile (Mac mini)"
+name = "Inference reconcile (Mac mini)"
 push_token = "${OLLAMA_MINI_PUSH_TOKEN}"
 interval = 172800
 # Every seventh down beat — roughly weekly against the daily 06:35 check.

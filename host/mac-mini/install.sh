@@ -570,11 +570,19 @@ load_agent com.coralstack.ollama-reconcile "$AGENTS/com.coralstack.ollama-reconc
 omlx_installed=0
 [[ -x "$STATE/oMLX.app/Contents/MacOS/omlx-cli" ]] && omlx_installed=1
 
-# `ollama ps` lists RESIDENT models, which is the question that matters. A
-# running-but-idle Ollama costs nothing; one holding 18-33 GB of weights is
-# what collides with oMLX. An empty list (header only) means nothing is loaded.
+# Does Ollama hold a model RESIDENT? That is the question that matters: a
+# running-but-idle Ollama costs nothing, one holding 18-33 GB is what collides
+# with oMLX.
+#
+# REACHABILITY IS PROBED WITH curl, NOT THE CLI, FOR THE SAME REASON THE
+# RECONCILE DOES IT THAT WAY. `ollama ps` against a stopped server does not
+# fail — the CLI launches the Mac app to satisfy the request. That defect was
+# fixed in ollama-reconcile.sh and left sitting here, so install.sh itself
+# revived Ollama on every run while reporting that it had stopped it. Found by
+# checking the box's state after a run rather than trusting the output.
 ollama_resident=0
-if /usr/local/bin/ollama ps >/dev/null 2>&1; then
+if curl -fsS -m 3 -o /dev/null "http://127.0.0.1:11434/api/tags" 2>/dev/null; then
+	# Only now is the CLI safe: something is already answering on 11434.
 	[[ -n "$(/usr/local/bin/ollama ps 2>/dev/null | awk 'NR>1 && NF {print}')" ]] && ollama_resident=1
 fi
 

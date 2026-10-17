@@ -152,6 +152,21 @@ start_ollama() {
 	sleep 5
 }
 
+# Is oMLX actually answering? Used both by --cutover and before the closing
+# reconcile, because launchd having accepted the job is not the same thing.
+omlx_ready() {
+	local key port i
+	key="$(sed -n 's/^OMLX_API_KEY=//p' "$STATE/omlx.env" 2>/dev/null | head -1)"
+	port="$(sed -n 's/^OMLX_PORT=//p' "$STATE/omlx.env" 2>/dev/null | head -1)"
+	port="${port:-8000}"
+	for i in $(seq 1 60); do
+		curl -fsS -m 5 -o /dev/null -H "Authorization: Bearer $key" \
+			"http://127.0.0.1:${port}/v1/models" 2>/dev/null && return 0
+		sleep 3
+	done
+	return 1
+}
+
 # fetch_chunked <url> <final-path>
 fetch_chunked() {
 	local url="$1" final="$2"
@@ -588,15 +603,7 @@ if [[ "$PRIMARY" == omlx ]]; then
 		port="$(sed -n 's/^OMLX_PORT=//p' "$STATE/omlx.env" | head -1)"
 		port="${port:-8000}"
 		log "Waiting for oMLX to answer on :$port (up to 180s)"
-		ready=0
-		for _ in $(seq 1 60); do
-			if curl -fsS -m 5 -o /dev/null \
-				-H "Authorization: Bearer $key" \
-				"http://127.0.0.1:${port}/v1/models" 2>/dev/null; then
-				ready=1; break
-			fi
-			sleep 3
-		done
+		ready=0; omlx_ready && ready=1
 
 		if (( ready )); then
 			# CHECK OLLAMA AGAIN, AFTER oMLX IS UP. The relaunches that
@@ -634,9 +641,21 @@ if [[ "$PRIMARY" == omlx ]]; then
 		log "Ollama still holds a model resident, so oMLX was NOT started."
 		log "  The agent is installed and ready. To complete the cutover:"
 		log "    bash $HERE/install.sh --cutover"
+	elif launchctl print "gui/$(id -u)/com.coralstack.omlx" >/dev/null 2>&1 \
+		&& curl -fsS -m 5 -o /dev/null \
+			-H "Authorization: Bearer $(sed -n 's/^OMLX_API_KEY=//p' "$STATE/omlx.env" 2>/dev/null | head -1)" \
+			"http://127.0.0.1:8000/v1/models" 2>/dev/null; then
+		# ALREADY SERVING — LEAVE IT ALONE. A plain install.sh run used to
+		# bootout and re-bootstrap the live server, which dropped in-flight
+		# requests and, worse, meant the reconcile at the end of this script
+		# ran against a server still starting up and reported a false "did not
+		# answer" finding. Reinstalling scripts is not a reason to restart a
+		# healthy inference server.
+		log "oMLX is already serving — leaving it running"
 	else
 		log "Nothing resident in Ollama — starting the oMLX agent"
 		load_agent com.coralstack.omlx "$AGENTS/com.coralstack.omlx.plist"
+		omlx_ready || warn "oMLX did not answer within 180s — see $STATE/logs/omlx.log"
 	fi
 else
 	# Declared primary is Ollama. If the oMLX agent is loaded, this run IS the
@@ -657,6 +676,14 @@ fi
 # ─── First run: REPORT ONLY ──────────────────────────────────────────────────
 # Not --apply. A declared model set can be tens of GB and an installer should
 # never start that unannounced; the daily job will, or you can now.
+# WAIT FOR THE SERVER FIRST. The reconcile asks whether oMLX is answering, so
+# running it against a server that is still starting manufactures a finding and
+# pushes a spurious `down` to the monitor — which is exactly the kind of
+# cry-wolf this host has already paid for once.
+if [[ "$PRIMARY" == omlx ]] && launchctl print "gui/$(id -u)/com.coralstack.omlx" >/dev/null 2>&1; then
+	omlx_ready || warn "oMLX still not answering; the reconcile below will say so"
+fi
+
 log "Running the reconcile once in report-only mode"
 set +e
 OLLAMA_RECONCILE_ENV="$STATE/ollama.env" bash "$STATE/ollama-reconcile.sh"

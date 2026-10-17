@@ -10,7 +10,7 @@
 # shows no gap, its MTP is not engaging — which would mean the checkpoint's
 # head is not being used, and that is the thing worth knowing.
 set -uo pipefail
-MODEL="${1:-Jundot/Qwen3.8-27B-oQ4e-mtp}"
+MODEL="${1:-Qwen3.8-27B-oQ4e-mtp}"
 PORT="${2:-8000}"
 GEN=512
 KEY="$(sed -n 's/^OMLX_API_KEY=//p' "$HOME/.coralstack/omlx.env" | head -1)"

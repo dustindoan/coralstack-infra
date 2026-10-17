@@ -96,6 +96,32 @@ stop_ollama() {
 	fi
 }
 
+# ─── Replacing a launchd agent without racing it ─────────────────────────────
+# `launchctl bootstrap` straight after `bootout` fails with "Bootstrap failed:
+# 5: Input/output error" while the old job is still unloading — and a graceful
+# shutdown is not instant, so this is likely rather than rare for a server.
+#
+# That is how the third cutover attempt ended with NOTHING running: the bootout
+# succeeded, the bootstrap silently failed, the readiness wait correctly found
+# no server, and the fail-back fired. The bug was not the race, it was ignoring
+# bootstrap's exit status and calling it bootstrapped.
+#
+# load_agent <label> <plist>
+load_agent() {
+	local label="$1" plist="$2" uid; uid="$(id -u)"
+	launchctl bootout "gui/$uid/$label" 2>/dev/null || true
+	# Wait for it to actually be gone before trying to replace it.
+	local i
+	for i in $(seq 1 30); do
+		launchctl print "gui/$uid/$label" >/dev/null 2>&1 || break
+		sleep 1
+	done
+	launchctl print "gui/$uid/$label" >/dev/null 2>&1 \
+		&& die "$label is still loaded after 30s of bootout — check launchctl print gui/$uid/$label"
+	launchctl bootstrap "gui/$uid" "$plist" \
+		|| die "launchctl bootstrap of $label failed — the agent is NOT running"
+}
+
 start_ollama() {
 	log "Re-enabling and starting Ollama"
 	launchctl enable "gui/$(id -u)/$OLLAMA_SVC" 2>/dev/null || true
@@ -424,11 +450,11 @@ sed "s|__HOME__|$HOME|g" "$HERE/com.ollama.host.plist.template" > "$AGENTS/com.o
 
 # `launchctl load` no longer runs RunAtLoad reliably on modern macOS; bootstrap
 # into the GUI domain instead. bootout first so a re-run replaces cleanly.
-launchctl bootout "gui/$(id -u)/com.ollama.host" 2>/dev/null || true
 if [[ "$PRIMARY" == ollama ]]; then
-	launchctl bootstrap "gui/$(id -u)" "$AGENTS/com.ollama.host.plist"
+	load_agent com.ollama.host "$AGENTS/com.ollama.host.plist"
 	launchctl kickstart -k "gui/$(id -u)/com.ollama.host"  # simulate a fresh login
 else
+	launchctl bootout "gui/$(id -u)/com.ollama.host" 2>/dev/null || true
 	log "  left UNLOADED — $PRIMARY serves, so Ollama needs no env and must not be revived"
 fi
 
@@ -478,8 +504,7 @@ sed "s|__HOME__|$HOME|g" "$HERE/com.coralstack.omlx.plist.template" \
 log "Installing the reconcile LaunchAgent (daily 06:35)"
 sed "s|__HOME__|$HOME|g" "$HERE/com.coralstack.ollama-reconcile.plist.template" \
 	> "$AGENTS/com.coralstack.ollama-reconcile.plist"
-launchctl bootout   "gui/$(id -u)/com.coralstack.ollama-reconcile" 2>/dev/null || true
-launchctl bootstrap "gui/$(id -u)" "$AGENTS/com.coralstack.ollama-reconcile.plist"
+load_agent com.coralstack.ollama-reconcile "$AGENTS/com.coralstack.ollama-reconcile.plist"
 
 # ─── Which runtime actually serves ───────────────────────────────────────────
 # ONE RULE GOVERNS THIS WHOLE BLOCK: nothing here stops Ollama without being
@@ -505,8 +530,7 @@ if [[ "$PRIMARY" == omlx ]]; then
 		log "CUTOVER: stopping Ollama and starting oMLX"
 		stop_ollama
 
-		launchctl bootout   "gui/$(id -u)/com.coralstack.omlx" 2>/dev/null || true
-		launchctl bootstrap "gui/$(id -u)" "$AGENTS/com.coralstack.omlx.plist"
+		load_agent com.coralstack.omlx "$AGENTS/com.coralstack.omlx.plist"
 
 		# WAIT FOR IT TO ACTUALLY SERVE, AND FAIL BACK IF IT DOES NOT.
 		# The first version of this reported success the moment launchd
@@ -553,8 +577,7 @@ if [[ "$PRIMARY" == omlx ]]; then
 		log "    bash $HERE/install.sh --cutover"
 	else
 		log "Nothing resident in Ollama — starting the oMLX agent"
-		launchctl bootout   "gui/$(id -u)/com.coralstack.omlx" 2>/dev/null || true
-		launchctl bootstrap "gui/$(id -u)" "$AGENTS/com.coralstack.omlx.plist"
+		load_agent com.coralstack.omlx "$AGENTS/com.coralstack.omlx.plist"
 	fi
 else
 	# Declared primary is Ollama. If the oMLX agent is loaded, this run IS the

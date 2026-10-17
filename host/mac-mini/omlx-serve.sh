@@ -71,6 +71,7 @@ OMLX_PORT="${OMLX_PORT:-8000}"
 MODEL_DIR="${OMLX_MODEL_DIR:-$HOME/.omlx/models}"
 CACHE_DIR="${OMLX_SSD_CACHE_DIR:-$HOME/.omlx/cache}"
 CACHE_MAX="${OMLX_SSD_CACHE_MAX_SIZE:-40GB}"
+HOT_CACHE_MAX="${OMLX_HOT_CACHE_MAX_SIZE:-10GB}"
 mkdir -p "$MODEL_DIR" "$CACHE_DIR"
 
 exec "$OMLX_CLI" serve \
@@ -79,7 +80,7 @@ exec "$OMLX_CLI" serve \
 	--model-dir "$MODEL_DIR" \
 	--paged-ssd-cache-dir "$CACHE_DIR" \
 	--paged-ssd-cache-max-size "$CACHE_MAX" \
-	--hot-cache-max-size 20% \
+	--hot-cache-max-size "$HOT_CACHE_MAX" \
 	--memory-guard balanced \
 	--max-concurrent-requests 4 \
 	"$@"
@@ -110,18 +111,28 @@ exec "$OMLX_CLI" serve \
 #   instead would be tighter but breaks if the lease ever moves.
 #
 # --paged-ssd-cache-max-size 40GB
-#   NOT `auto`, which is 50% of free disk — ~400 GB here. 40 GB is the spike's
+#   NOT the default, which `serve --help` on 0.7.1rc1 gives as 100GB. (The
+#   README says `auto`, meaning 50% of free disk, which would be ~400 GB here —
+#   another place the docs for the default branch describe a different build.
+#   Either way the default is far looser than this box needs.) 40 GB is the spike's
 #   cap and about six 46k-token conversations at the measured 6.4 GB each
 #   (2.9 GB of KV at 64 KB/token plus ~3.5 GB of Gated DeltaNet state
 #   snapshots, ~150 MB per 2,048-token block). 0.7.0 is also the release that
 #   stopped keeping one full-state tail per turn on GDN layouts, so this
 #   figure depends on being on 0.7.0 or later.
 #
-# --hot-cache-max-size 20%
-#   The upstream default, declared anyway so it is visible next to the
-#   arithmetic that justifies it: ~9.6 GB of 48, on top of 15.45 GB of
-#   weights, against a ~44 GiB wired ceiling. That headroom is what makes
-#   "one runtime serves at a time" a hard constraint rather than a preference.
+# --hot-cache-max-size 10GB
+#   ABSOLUTE, NOT A PERCENTAGE, and NOT a default. Two corrections learned by
+#   crashing (2026-10-16): the README documents a `20%` form, and 0.7.1rc1
+#   rejects it outright — "Configuration error: Invalid hot_cache_max_size:
+#   Invalid size string: 20%" — and its own help says the default is
+#   "0 (disabled)", so leaving this out would have shipped the in-memory tier
+#   switched off entirely. `serve --help` says '8GB', '4GB'.
+#
+#   10GB is the arithmetic the old comment claimed for 20%: ~10 of 48 GB on
+#   top of ~15 GB of weights, against a ~44 GiB wired ceiling. That headroom
+#   is what makes "one runtime serves at a time" a hard constraint rather than
+#   a preference.
 #
 # --memory-guard balanced
 #   What the spike ran. 0.7.0 rebuilt the guard; `balanced` keeps ~8% of RAM

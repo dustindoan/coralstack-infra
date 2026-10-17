@@ -65,6 +65,44 @@ PRIMARY="${PRIMARY:-ollama}"
 # against Ollama's 188, so this is ~100 chunks rather than ~24, and a path that
 # wedges mid-download is the difference between a few minutes and never.
 #
+# ─── Stopping and starting Ollama ────────────────────────────────────────────
+# `pkill` IS NOT A DURABLE STOP, which the first cutover discovered the hard
+# way: Ollama came straight back with PPID 1. The Mac app registers itself
+# through SMAppService, which shows up as the launchd service
+# `com.ollama.ollama` in the GUI domain, and launchd respawns it. That is the
+# same Login Item machinery com.ollama.host.sh already guards a boot race
+# against — here it is the thing that undoes the stop.
+#
+# WORSE, AND THE REASON THIS MATTERS BEYOND TIDINESS: with the login item left
+# enabled, a reboot starts Ollama alongside oMLX. 48 GB does not hold both, and
+# "alternating between two conversations works after a reboot" is one of the
+# acceptance criteria — so the reboot case would have been the one that failed,
+# confusingly, long after the cutover looked fine.
+#
+# `launchctl disable` persists across reboots, which is exactly the property
+# wanted here, and start_ollama re-enables it so a rollback is symmetric.
+OLLAMA_SVC="com.ollama.ollama"
+
+stop_ollama() {
+	log "Stopping Ollama and disabling its login item ($OLLAMA_SVC)"
+	launchctl bootout  "gui/$(id -u)/$OLLAMA_SVC" 2>/dev/null || true
+	launchctl disable  "gui/$(id -u)/$OLLAMA_SVC" 2>/dev/null || true
+	# AppleScript quit needs GUI permission and hangs headless — signals only.
+	pkill -if 'Ollama.app' 2>/dev/null || true
+	pkill -ix ollama 2>/dev/null || true
+	sleep 3
+	if pgrep -x ollama >/dev/null 2>&1; then
+		warn "ollama is STILL running after bootout+disable+kill — check launchctl print gui/$(id -u)/$OLLAMA_SVC"
+	fi
+}
+
+start_ollama() {
+	log "Re-enabling and starting Ollama"
+	launchctl enable "gui/$(id -u)/$OLLAMA_SVC" 2>/dev/null || true
+	open -a Ollama 2>/dev/null || warn "could not launch Ollama.app"
+	sleep 5
+}
+
 # fetch_chunked <url> <final-path>
 fetch_chunked() {
 	local url="$1" final="$2"
@@ -158,10 +196,12 @@ if (( UPGRADE )); then
 		got="$(defaults read "$tmp/unpacked/Ollama.app/Contents/Info" CFBundleShortVersionString 2>/dev/null || echo unknown)"
 		[[ "$got" == "$want" ]] || die "archive claims version $got, expected $want — refusing to install"
 
-		log "Stopping Ollama (AppleScript quit needs GUI permission and hangs headless — signals only)"
-		pkill -if 'Ollama.app' 2>/dev/null || true
-		pkill -ix ollama 2>/dev/null || true
-		sleep 2
+		# The durable stop, not a bare pkill: launchd respawns this app from
+		# its SMAppService login item, which would both fight the bundle
+		# replacement below and — if oMLX is the primary — bring Ollama back
+		# up alongside it. start_ollama re-enables the login item, and is
+		# called below only when Ollama is the runtime that serves.
+		stop_ollama
 
 		log "Replacing /Applications/Ollama.app"
 		rm -rf /Applications/Ollama.app
@@ -173,11 +213,11 @@ if (( UPGRADE )); then
 		# the upgrade is otherwise a perfectly reasonable thing to do while
 		# oMLX is serving.
 		if [[ "$PRIMARY" == ollama ]]; then
-			open -a Ollama
-			sleep 5
+			start_ollama
 			log "Now: $(/usr/local/bin/ollama --version 2>&1 | tail -1)"
 		else
-			log "Upgraded the bundle and left Ollama STOPPED — $PRIMARY is the primary runtime."
+			log "Upgraded the bundle and left Ollama STOPPED and its login item"
+			log "  disabled — $PRIMARY is the primary runtime."
 		fi
 
 		# Only now is the resume cache dead weight — 190MB of it.
@@ -448,14 +488,45 @@ if [[ "$PRIMARY" == omlx ]]; then
 		log "  Run: bash $HERE/install.sh --install-omlx"
 	elif (( CUTOVER )); then
 		log "CUTOVER: stopping Ollama and starting oMLX"
-		# The one place anything here stops Ollama, reached only via --cutover.
-		pkill -if 'Ollama.app' 2>/dev/null || true
-		pkill -ix ollama 2>/dev/null || true
-		sleep 3
+		stop_ollama
+
 		launchctl bootout   "gui/$(id -u)/com.coralstack.omlx" 2>/dev/null || true
 		launchctl bootstrap "gui/$(id -u)" "$AGENTS/com.coralstack.omlx.plist"
-		log "oMLX agent bootstrapped. Ollama is stopped but still installed —"
-		log "  rollback is MINI_PRIMARY_RUNTIME=ollama in versions.env plus a re-run."
+
+		# WAIT FOR IT TO ACTUALLY SERVE, AND FAIL BACK IF IT DOES NOT.
+		# The first version of this reported success the moment launchd
+		# accepted the job, which is not the same thing at all: on
+		# 2026-10-16 it printed "oMLX agent bootstrapped" over a KeepAlive
+		# crash loop caused by one bad flag value, and left the box with
+		# nothing serving the household. A cutover that cannot verify the
+		# new server is not a cutover, it is an outage with a success
+		# message.
+		key="$(sed -n 's/^OMLX_API_KEY=//p' "$STATE/omlx.env" | head -1)"
+		port="$(sed -n 's/^OMLX_PORT=//p' "$STATE/omlx.env" | head -1)"
+		port="${port:-8000}"
+		log "Waiting for oMLX to answer on :$port (up to 180s)"
+		ready=0
+		for _ in $(seq 1 60); do
+			if curl -fsS -m 5 -o /dev/null \
+				-H "Authorization: Bearer $key" \
+				"http://127.0.0.1:${port}/v1/models" 2>/dev/null; then
+				ready=1; break
+			fi
+			sleep 3
+		done
+
+		if (( ready )); then
+			log "oMLX is serving on :$port. Ollama is stopped and its login item"
+			log "  is disabled, so a reboot will not bring it back alongside oMLX."
+			log "  Rollback: MINI_PRIMARY_RUNTIME=ollama in versions.env plus a re-run."
+		else
+			warn "oMLX did NOT come up within 180s. Failing back to Ollama."
+			warn "Last 15 lines of $STATE/logs/omlx.log:"
+			tail -15 "$STATE/logs/omlx.log" 2>&1 | sed 's/^/    /' >&2
+			launchctl bootout "gui/$(id -u)/com.coralstack.omlx" 2>/dev/null || true
+			start_ollama
+			die "cutover aborted; Ollama restored. Fix the above, then re-run --cutover."
+		fi
 	elif (( ollama_resident )); then
 		# Deliberately NOT starting oMLX here. Whether oMLX preloads the models
 		# it finds in --model-dir at startup is unverified, and if it does, that
@@ -476,6 +547,12 @@ else
 	if launchctl print "gui/$(id -u)/com.coralstack.omlx" >/dev/null 2>&1; then
 		log "versions.env declares Ollama primary — stopping the oMLX agent"
 		launchctl bootout "gui/$(id -u)/com.coralstack.omlx" 2>/dev/null || true
+	fi
+	# A rollback has to UNDO the disable, or Ollama stays down across reboots
+	# and the box serves nothing at all — the one failure worse than either
+	# runtime being wrong.
+	if ! pgrep -x ollama >/dev/null 2>&1; then
+		start_ollama
 	fi
 	(( omlx_installed )) && log "oMLX stays installed as the forward path; nothing serving from it."
 fi

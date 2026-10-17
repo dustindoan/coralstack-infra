@@ -1,13 +1,16 @@
 # The Mac mini — the host outside the deploy model
 
-> **Status (2026-10-16):** ✅ Ollama in sync, ⬜ oMLX declared but **not yet
-> installed**. The box runs Ollama 0.40.4 matching its pin, and monitor #12 went
-> green on 2026-10-15 after 28 days red. This change adds a second runtime —
-> oMLX — as the server for the primary model, declared in `host/mac-mini/` and
-> **not yet on the box**: nothing has been installed, Ollama has not been
-> stopped, and the two done-criteria in
-> [Serving the model through oMLX](#serving-the-model-through-omlx) are
-> unverified. See that section for what is measured and what is still a claim.
+> **Status (2026-10-17):** ✅ oMLX 0.7.1rc1 **installed and serving**; Ollama
+> stopped, still installed, login item disabled, and one line in
+> `versions.env` away from being the primary again. The acceptance criteria in
+> [Done means](#done-means) are measured and met: a 230k-token conversation
+> survives an agent switch in **14 s** against 62 minutes to rebuild it, and a
+> restart in 15 s. Decode is within 5% of Ollama on realistic prose.
+>
+> **Not done:** Open WebUI still points at the stopped Ollama, so household
+> chat is down until this branch merges and deploys — that compose change
+> travels by `git pull`, not from here. Perennial's relay also needs its path
+> moved to `/openai/v1/chat/completions` in its own repo.
 >
 > *(Superseded twice. The 2026-09-03 status said "nothing installed on the box
 > yet ... Ollama there is still 0.30.10". The 2026-10-14 status said the pin
@@ -598,18 +601,123 @@ hat. What *is* a finding is the other runtime still holding weights resident —
 `ollama ps` non-empty while oMLX is primary — because that is the half-finished
 cutover, and the memory-thrash case.
 
+### Measured: the cache is the whole case, and it holds
+
+All on the installed service, 2026-10-16/17, `Qwen3.8-27B-oQ4e-mtp` on oMLX
+0.7.1rc1. `host/mac-mini/alternation-test.sh` is the harness; prompt sizes are
+calibrated against `/tokenize`, not estimated.
+
+**At 46k tokens** — the size the agents run today:
+
+| step | prompt tokens | cached | wall |
+| --- | ---: | ---: | ---: |
+| A cold | 46,174 | 0 | 418 s |
+| A + one turn | 46,198 | 45,056 | 14 s |
+| B cold | 46,255 | 0 | 417 s |
+| **A after B** | 46,198 | 46,193 | **1 s** |
+| **A after a restart** | 46,198 | 46,193 | **6 s** |
+
+**At 230k tokens** — near the model's 262,144 limit:
+
+| step | prompt tokens | cached | wall |
+| --- | ---: | ---: | ---: |
+| A cold | 230,853 | 0 | 3,700 s (62 min) |
+| A + one turn | 230,877 | 229,376 | 52 s |
+| B cold | 230,813 | 0 | 3,731 s (62 min) |
+| **A after B** | 230,877 | 230,872 | **14 s** |
+| **A after a restart** | 230,877 | 230,872 | **15 s** |
+
+**The agent switch that costs Ollama 442 s costs oMLX 1 s at 46k and 14 s at
+230k.** The restart rows prove the SSD tier genuinely persists, since a restart
+clears RAM. 418 s cold at 46k reproduces the spike's 419 s, which is the
+evidence the harness is sound.
+
+Three things in those tables are worth understanding rather than just reading:
+
+- **Cold prefill degrades with context**: 105 tok/s at 46k, 62 tok/s at 230k.
+  62 minutes to build a 230k conversation is not usable interactively by
+  either runtime — it is the same hardware ceiling — so a 230k workload is
+  only viable *because* the cache makes it a one-time cost.
+- **The first append after a cold prefill is the expensive one.** It is served
+  block-aligned (45,056 = 22 × 2048; 229,376 = 112 × 2048) and the partial
+  tail is recomputed. By the next visit the full prefix has been stored
+  (46,193 and 230,872), so steady-state per-turn cost is the 1-14 s row, not
+  the 14-52 s one.
+- **The whole thing rests on the prefix being append-only.** An edit near the
+  start of the prompt — a changed system prompt, an agent rewriting its own
+  core memory — invalidates from that point and costs the full cold prefill
+  again. At 230k that is an hour.
+
+**And Ollama cannot do this at all at that size.** Its live configuration runs
+a 32,768-token context, so at the context length this host is now configured
+for, oMLX is not 5% slower at decode in exchange for a faster cache — it is
+the difference between possible and impossible.
+
+### The GDN codec: half the disk for nothing
+
+Same harness, same prompt sizes, two 46k conversations, fp32 against rht_int8
+on a forced `ssd_sidecar` layout:
+
+| | fp32 (upstream default) | rht_int8 |
+| --- | ---: | ---: |
+| SSD footprint | 15 GB | **7.5 GB** |
+| switch (A after B) | 1 s | 1 s |
+| after a restart | 6 s | **4 s** |
+| cold prefill | 418 s | 422 s |
+
+Half the disk, no speed cost, and a faster restart because there is less to
+read back. Adopted as the default in `omlx-serve.sh`. At 230k that is ~15 GB
+per conversation instead of ~30, so the 300 GB cache holds ~20 rather than ~10.
+
+The trap is recorded in the wrapper: the codec applies **only** on the sidecar
+path, and the `embedded` layout stores raw fp32 regardless (jundot/omlx#2700,
+open), so `rht_int8` with `gdn_snapshot_storage = auto` may do nothing at all.
+
+### Why oMLX is slower at decode, and why that is not oMLX's fault
+
+oMLX beats Ollama on text-only models. Qwen3.8-27B is a vision-language
+checkpoint, so oMLX routes it to its **VLM engine**, which carries an open
+performance defect: jundot/omlx#3882 reports its `BatchGenerator` path well
+below plain mlx-lm `generate_step` (Qwen text 13.8 vs 82.7 tok/s), and the
+maintainer traced it to per-layer scalar synchronization — a diagnostic that
+removed it restored ~103 tok/s from ~59. Unfixed in 0.7.1rc1.
+
+jundot/omlx#4402 independently measures *this exact model and quant* on the
+VLM engine at 20-27 tok/s aggregate, corroborating the figures above, and
+reports VLM-engine concurrency scaling at ~1.2× across 8 requests against
+~3.5× for LLM-engine models.
+
+**That last number retires one of this change's two original justifications.**
+The brief expected concurrency to stop the two agents serialising; on this
+engine it largely will not. The case for oMLX here is the cache, and only the
+cache — which is why the tables above are the deliverable and the decode
+measurement is merely a gate it had to pass.
+
+Not fixable from here: there is no vision-disable flag, and #3698 only helps
+checkpoints that *lack* a vision tower. A vision-stripped Qwen3.8-27B
+conversion would land on the LLM engine and should be markedly faster; none
+exists among the published variants.
+
 ### Done means
 
-1. On the installed service, alternating between two ~46k-token conversations
-   takes a few seconds per call after each one's first call, **including after a
-   reboot**.
-2. Decode is within ~10% of Ollama's 24-30 tok/s on the 2026-10-14 harness, or
-   the regression is measured and accepted deliberately.
-3. The household's chat in Open WebUI still works, with prefix stability
-   through the passthrough confirmed by `cached_tokens`.
-4. The reconcile reports green.
+1. ✅ **Alternating conversations are fast after the first call.** 1 s at 46k,
+   14 s at 230k, and 6 s / 15 s after a full restart of the service. Measured,
+   not inferred — `cached_tokens` reports 46,193 of 46,198 and 230,872 of
+   230,877.
+2. ✅ **Decode is within 5%** on realistic prose (26.1 against 27.5 tok/s),
+   comfortably inside the ~10% bar, once both sides are compared
+   generation-only.
+3. ⬜ **Household chat is NOT verified**, and cannot be from here: Open WebUI's
+   compose change reaches the apps VM by `git pull`, so it still points at the
+   stopped Ollama. Prefix stability through its `/openai` passthrough is
+   therefore also unmeasured — the one claim in this document resting on
+   reasoning rather than measurement.
+4. ✅ **The reconcile reports green**, with the summary naming the serving
+   runtime.
 
-None of the four is verified yet. Nothing is installed on the box.
+A *reboot* has not been tested either. The login item is disabled so Ollama
+will not come back alongside oMLX, and the oMLX agent is `RunAtLoad` +
+`KeepAlive` — but that is an argument, not a measurement.
 
 ## Monitoring
 

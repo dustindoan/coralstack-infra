@@ -87,12 +87,12 @@ mkdir -p "$MODEL_DIR" "$CACHE_DIR"
 #   is the most expensive; upstream #2700 measures bf16 at ~1.35x and rht_int8
 #   at ~1.62x the resident block count for under 5% on warm prefill, and #3284
 #   reports a sidecar bundle going 5.1GB -> 57MB.
-# gdn_snapshot_storage — auto|ssd_sidecar|embedded. THE CODEC ONLY APPLIES ON
-#   THE SIDECAR PATH: #2700 is open precisely because the `embedded` layout
-#   stores state as raw fp32 and the codec never reaches it. So setting a codec
-#   without forcing ssd_sidecar may do nothing at all.
-GDN_PRECISION="${OMLX_GDN_PRECISION:-fp32}"
-GDN_STORAGE="${OMLX_GDN_STORAGE:-auto}"
+# gdn_snapshot_storage — auto|ssd_sidecar|embedded. FORCED TO ssd_sidecar, and
+#   not for tidiness: THE CODEC ONLY APPLIES ON THE SIDECAR PATH. #2700 is open
+#   precisely because the `embedded` layout stores state as raw fp32 and the
+#   codec never reaches it, so `rht_int8` with `auto` may quietly do nothing.
+GDN_PRECISION="${OMLX_GDN_PRECISION:-rht_int8}"
+GDN_STORAGE="${OMLX_GDN_STORAGE:-ssd_sidecar}"
 SETTINGS="${OMLX_SETTINGS_FILE:-$HOME/.omlx/settings.json}"
 
 if command -v jq >/dev/null 2>&1; then

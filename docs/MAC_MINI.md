@@ -673,6 +673,108 @@ The trap is recorded in the wrapper: the codec applies **only** on the sidecar
 path, and the `embedded` layout stores raw fp32 regardless (jundot/omlx#2700,
 open), so `rht_int8` with `gdn_snapshot_storage = auto` may do nothing at all.
 
+### Concurrency: measured, and better than the issue tracker suggested
+
+The sub-agent case — a parent agent spawning a child, both generating at once.
+Measured 2026-10-17 with distinct prompts so nothing shares a cached prefix,
+256 tokens each, short prompts so this isolates decode rather than prefill:
+
+| parallel | aggregate tok/s | per-request tok/s | speedup |
+| ---: | ---: | ---: | ---: |
+| 1 | 20.9 | 20.9 | 1.00× |
+| 2 | 32.5 | 16.2 | **1.55×** |
+| 4 | 44.4 | 11.1 | **2.12×** |
+
+Two agents generating 256 tokens each take **15.7 s in parallel against 24.4 s
+serialised**. Per-request speed drops, aggregate throughput rises — the normal
+continuous-batching trade, and the right one when a parent and child are both
+working.
+
+**This corrects an earlier claim in this document.** jundot/omlx#4402 reports
+VLM-engine scaling of ~1.2× across 8 requests on an M3 Ultra, and that was
+repeated here as evidence that the brief's concurrency justification was dead.
+It is not dead on this box: 2.12× at four parallel sits inside the 1.51-3.39×
+that `vllm-mlx` reports for five concurrent requests, and oMLX inherits that
+continuous-batching machinery. Someone else's hardware is not a measurement of
+yours.
+
+### Context length against concurrency — they share one budget
+
+With `--memory-guard-gb 42` the process memory enforcer reports a 42.0 GB
+ceiling. Weights take 16.6 GB, leaving **~25 GB for context** at the measured
+61 KB per token:
+
+| context per conversation | memory each | concurrent that fit |
+| ---: | ---: | ---: |
+| 262k | 16.0 GB | **1** |
+| 128k | 7.8 GB | **3** |
+| 96k | 5.9 GB | 4 |
+| 64k | 3.9 GB | 6 |
+| 46k | 2.8 GB | 9 |
+
+**128k is the chosen target**, for two independent reasons. A cache
+invalidation costs a full cold prefill — ~25 min at 128k against ~70 min at
+262k — and 262k leaves room for exactly one conversation, so it forecloses the
+sub-agent case entirely. At 128k a parent and child fit with room for the
+household beside them.
+
+> **There is no server-side context cap.** `omlx-cli serve` has no
+> max-context flag; the server accepts whatever the client sends, up to the
+> model's 262,144. So the 128k decision is enforced in the CLIENTS, not here.
+> The memory guard will throttle or refuse a prompt it cannot fit rather than
+> crashing, but nothing stops a 262k prompt from arriving and costing an hour.
+
+### The hot cache is disabled, and that cost nothing
+
+`--hot-cache-max-size 0`, which is also upstream's default. Verified by running
+the full alternation test with it off and comparing against the same test with
+1 GB:
+
+| | hot cache 1GB | hot cache 0 |
+| --- | ---: | ---: |
+| switch (A after B) | 1 s | **1 s** |
+| after a restart | 4 s | **4 s** |
+| SSD footprint | 7.5 GB | 7.6 GB |
+
+Identical. The SSD tier does all the work, so every gigabyte given to this
+tier would be a gigabyte denied to the active context or a second concurrent
+conversation, in exchange for nothing measurable.
+
+### The guard can panic Metal, so the ceiling is explicit
+
+`--memory-guard aggressive` alone let oMLX believe it had a 46.5 GB static
+ceiling while this box's kernel wires only 44 GB. The server says what that
+means itself:
+
+> Metal cap (44.0GB, kernel iogpu.wired_limit_mb) is below the oMLX static
+> ceiling; Metal will clamp allocations to the cap and panic if a request
+> exceeds it.
+
+So the failure mode for a large context was a panic rather than a graceful
+refusal. `--memory-guard-gb 42` moves the enforcer to `tier=custom,
+ceiling=42.0GB`, under the kernel cap. **Mitigated, not eliminated:** the
+advisory static ceiling is computed separately and still exceeds 44 GB, so the
+warning persists. Clearing it entirely needs
+`sudo sysctl iogpu.wired_limit_mb=46694`, which needs root and does not
+survive a reboot. The 230k run peaked near 31.6 GB, so there is real headroom.
+
+### The load-bearing assumption, and where it breaks
+
+Everything above depends on the prefix being **append-only**, because the cache
+keys on it. An edit near the START invalidates everything after it, and the
+cost is a full cold prefill: ~7 min at 46k, ~25 min at 128k, ~70 min at 262k.
+
+**Letta's core memory sits in the system prompt, so every memory rewrite does
+exactly this.** That is not a property of oMLX and Ollama would not help — it
+is prompt architecture, and it is the single biggest risk to the value measured
+here. Two consequences worth designing around:
+
+- **Batch memory writes**, or confine them to a window where an hour of
+  re-prefill costs nothing. A sleep-time agent is the shape that fits.
+- **Summarisation must append, not rewrite.** A pass that appends a summary and
+  truncates only the tail keeps the prefix valid. One that rewrites history
+  destroys the cache as thoroughly as a memory edit.
+
 ### Why oMLX is slower at decode, and why that is not oMLX's fault
 
 oMLX beats Ollama on text-only models. Qwen3.8-27B is a vision-language

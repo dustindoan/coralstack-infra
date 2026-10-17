@@ -71,7 +71,8 @@ OMLX_PORT="${OMLX_PORT:-8000}"
 MODEL_DIR="${OMLX_MODEL_DIR:-$HOME/.omlx/models}"
 CACHE_DIR="${OMLX_SSD_CACHE_DIR:-$HOME/.omlx/cache}"
 CACHE_MAX="${OMLX_SSD_CACHE_MAX_SIZE:-300GB}"
-HOT_CACHE_MAX="${OMLX_HOT_CACHE_MAX_SIZE:-1GB}"
+HOT_CACHE_MAX="${OMLX_HOT_CACHE_MAX_SIZE:-0}"
+MEMORY_GUARD_GB="${OMLX_MEMORY_GUARD_GB:-42}"
 mkdir -p "$MODEL_DIR" "$CACHE_DIR"
 
 # ─── Settings that have no CLI flag ──────────────────────────────────────────
@@ -119,6 +120,7 @@ exec "$OMLX_CLI" serve \
 	--paged-ssd-cache-max-size "$CACHE_MAX" \
 	--hot-cache-max-size "$HOT_CACHE_MAX" \
 	--memory-guard aggressive \
+	--memory-guard-gb "$MEMORY_GUARD_GB" \
 	--max-concurrent-requests 4 \
 	"$@"
 
@@ -158,8 +160,8 @@ exec "$OMLX_CLI" serve \
 #   stopped keeping one full-state tail per turn on GDN layouts, so this
 #   figure depends on being on 0.7.0 or later.
 #
-# --hot-cache-max-size 1GB
-#   DELIBERATELY SMALL, because this cache COMPETES WITH THE ACTIVE CONTEXT
+# --hot-cache-max-size 0  (DISABLED)
+#   DISABLED OUTRIGHT, because this cache COMPETES WITH THE ACTIVE CONTEXT
 #   and the active context matters far more.
 #
 #   What this tier is: an in-RAM holding area for the cache blocks of
@@ -182,8 +184,11 @@ exec "$OMLX_CLI" serve \
 #       hot cache  2GB -> ~237k
 #       hot cache ~0   -> ~262k, i.e. the model's own limit
 #   A 10GB hot tier therefore silently capped this box at ~114k tokens to buy
-#   a 0.1s improvement on switching. 1GB trades that away for the model's full
-#   262,144-token context.
+#   a 0.1s improvement on switching. `0` is the upstream default and what this
+#   box runs: every gigabyte here is a gigabyte not available to the active
+#   context or to a second concurrent conversation, in exchange for a tenth of
+#   a second. Verified 2026-10-17 that the server accepts `0` and serves
+#   normally with the SSD tier doing all the work.
 #
 #   Absolute sizes only, and not optional: 0.7.1rc1 rejects the `20%` form the
 #   README documents ("Invalid size string: 20%"), and its help gives the

@@ -18,7 +18,19 @@ W=/tmp/alt-work; mkdir -p "$W"
 # Two distinct ~46k-token conversations. Generated ONCE and reused, because the
 # whole point is that the prefix is byte-identical across calls.
 for c in A B; do
-	[[ -f "$W/filler-$c" ]] || openssl rand -hex 120000 | fold -w7 | paste -sd' ' - > "$W/filler-$c"
+	# SIZED BY MEASUREMENT, NOT BY ARITHMETIC. Calibrated against oMLX's own
+	# /tokenize endpoint (POST {model, prompt} -> {count}) on 2026-10-16:
+	# 20000 bytes of hex folded to 7-char words = 39,303 tokens, i.e. ~1.965
+	# tokens per BYTE of the -hex argument, so 23407 bytes lands at 46,284
+	# tokens — verified, not estimated.
+	#
+	# The first version of this used 120000 bytes on the assumption that hex
+	# tokenises at ~0.3 tokens/char. That is ~236,000 tokens, close to the
+	# model's 262,144 limit: it prefilled for over 20 minutes, sat on the
+	# memory cap, and produced no usable row. Worth knowing that killing this
+	# script does NOT cancel the request — curl dies, oMLX keeps prefilling
+	# server-side, so a restart of the agent is what actually stops it.
+	[[ -f "$W/filler-$c" ]] || openssl rand -hex 23407 | fold -w7 | paste -sd' ' - > "$W/filler-$c"
 done
 
 # call <conv> <extra-turns> <label>

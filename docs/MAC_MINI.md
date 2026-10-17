@@ -297,12 +297,47 @@ this not been caught, the box would have been running a heavily MTP-optimised
 engine on a model that cannot drive it, and the symptom would have been "the
 new thing feels slower" with no obvious cause.
 
-**It is still a gate.** "The household chat still works" is not a sufficient
-criterion — a 2× decode regression passes it while being a real downgrade for
-the people who use this box most. Measure decode against the 2026-10-14
-baseline of 24-30 tok/s on the same harness before the household is cut over.
-The remaining fallbacks are recorded in `omlx-models.txt`: an older revision of
-the same checkpoint, and an oQ6e-mtp at 22 GB if 4.887 bits costs quality.
+**It is still a gate**, and it now has a number. "The household chat still
+works" is not a sufficient criterion — a 2× decode regression passes it while
+being a real downgrade for the people who use this box most. Baseline taken
+2026-10-16 on an idle mini, Ollama 0.40.4, server-side timings, 512 generated
+tokens per run:
+
+| workload | prefill tok/s | decode tok/s | MTP acceptance |
+| --- | ---: | ---: | ---: |
+| count, ~820 tok | 124-130 | 36.8 | 0.99 |
+| prose, ~845 tok | 124-130 | 27.3-27.8 | 0.61-0.63 |
+| prose, ~11.8k tok | 122 | 24.8-26.0 | 0.61-0.66 |
+
+**Two workloads, because one of them lies.** A first pass used only the
+counting prompt and reported 36.6 tok/s — with MTP acceptance of 0.99, because
+counting is pathologically predictable. Free prose gets 0.61-0.63, and
+Perennial's agent traffic sits between at 0.83. So MTP is worth between 1.6×
+and 2.0× depending on what is being generated, and any decode figure quoted
+without its workload is meaningless. The gap between the two rows **is** the
+MTP contribution, which also makes it the test of whether MTP is engaging at
+all: if oMLX shows no gap, the head is not being used.
+
+This also vindicates the 2026-10-14 figure of 24-30 tok/s, which the prose rows
+reproduce. The earlier criticism of it in this doc was about sample size — one
+128-token run per point — not about the number, which held up.
+
+**The derived figure is the one that justifies the model choice.** At
+acceptance 0.63 with `avg_draft=2.00`, Ollama banks ~1.63 accepted tokens per
+step, so a head-stripped conversion would decode prose at roughly **17 tok/s** —
+a ~38% regression on exactly the workload the household feels. That is what
+`mlx-community/Qwen3.8-27B-nvfp4` would have delivered.
+
+So the gate is: **oMLX on the prose workload at ≥24.8 tok/s**, with the
+count-vs-prose gap present. The fallbacks if it misses are in
+`omlx-models.txt`: an older revision of the same checkpoint, and an oQ6e-mtp at
+22 GB if 4.887 bits costs quality.
+
+> Note one number that gets *worse* and does not matter: oMLX's cold prefill was
+> 110 tok/s in the spike against Ollama's 122-130 here, so a cache miss is
+> ~12% slower to recover from. The entire point is that misses stop happening,
+> but it is the right thing to look at first if the cache ever behaves worse
+> than the spike.
 
 ### One runtime serves at a time, and the switch is one line
 

@@ -134,10 +134,22 @@ PULLED=()
 # check too — and the version pin is a property of the installed binary, not of
 # a running server. With Ollama demoted to the rollback runtime that would have
 # silently stopped checking the thing this host's whole history is about.
+#
+# LIVENESS IS PROBED OVER HTTP, NOT WITH THE CLI, AND THAT IS NOT A STYLE
+# CHOICE. `ollama list` against a stopped server does not fail — the CLI
+# LAUNCHES THE MAC APP to satisfy the request. This script runs at the end of
+# every install.sh, so the reconcile was resurrecting the runtime the cutover
+# had just stopped, six runs in a row (2026-10-16). It looked like launchd or
+# the login item because the revived process has PPID 1 and arrives via
+# runningboardd — which is what the CLI's own launch looks like.
+#
+# Both runtimes do not fit in 48 GB, so a monitoring script that starts a
+# 18 GB runtime as a side effect of checking on it is worse than no check.
+# curl cannot do that.
 OLLAMA_LIVE=0
 if [[ -z "$OLLAMA_BIN" ]]; then
 	FINDINGS+=("no ollama binary found — is the Mac app installed?")
-elif "$OLLAMA_BIN" list >/dev/null 2>&1; then
+elif curl -fsS -m 3 -o /dev/null "http://127.0.0.1:11434/api/tags" 2>/dev/null; then
 	OLLAMA_LIVE=1
 elif [[ "$PRIMARY" == ollama ]]; then
 	FINDINGS+=("ollama is installed but not responding — the menu-bar app is probably not running (needs an auto-logged-in GUI session)")
@@ -221,12 +233,25 @@ if [[ -n "$OLLAMA_BIN" ]]; then
 		want="$(sed -n 's/^OLLAMA_VERSION=//p' "$VERSIONS_FILE" | tr -d '"' | head -1)"
 		# "ollama version is 0.30.10" -> 0.30.10
 		#
-		# MATCH THE VERSION LINE, don't take the last field of line 1. With the
-		# server stopped — which is now its normal state as the rollback
-		# runtime — `ollama --version` prints a "could not connect" warning
-		# FIRST, and the old `awk '{print $NF}' | head -1` read that warning's
-		# last word as the version and reported a skew against every pin.
-		have="$("$OLLAMA_BIN" --version 2>/dev/null | sed -n 's/.*version is //p' | head -1)"
+		# READ THE VERSION FROM THE BUNDLE WHEN THE SERVER IS DOWN, for the
+		# same reason liveness is probed with curl above: invoking the CLI on
+		# a stopped Ollama launches the app. Info.plist is the same source
+		# install.sh asserts against after an upgrade, and it needs nothing
+		# running at all.
+		#
+		# When the server IS live, prefer the CLI, since that reports the
+		# version actually answering rather than what is on disk — the two
+		# differ exactly when a bundle has been replaced under a running
+		# process, which is a state worth being able to see.
+		if (( OLLAMA_LIVE )); then
+			# MATCH THE VERSION LINE, don't take the last field of line 1:
+			# `ollama --version` can print a warning line first, and the old
+			# `awk '{print $NF}' | head -1` read that warning's last word as
+			# the version and reported a skew against every pin.
+			have="$("$OLLAMA_BIN" --version 2>/dev/null | sed -n 's/.*version is //p' | head -1)"
+		else
+			have="$(defaults read /Applications/Ollama.app/Contents/Info CFBundleShortVersionString 2>/dev/null)"
+		fi
 		if [[ -n "$want" && -n "$have" && "$want" != "$have" ]]; then
 			# Not "its own updater cannot apply this": it did, unattended, on
 			# 2026-09-16 — which is how $have came to be AHEAD of the pin.

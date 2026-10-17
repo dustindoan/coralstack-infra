@@ -506,7 +506,25 @@ log "Installing the oMLX serve wrapper and its config"
 install -m 0755 "$HERE/omlx-serve.sh" "$STATE/omlx-serve.sh"
 
 if [[ -f "$STATE/omlx.env" ]]; then
-	log "$STATE/omlx.env exists — leaving it alone"
+	# LEAVE THE VALUES ALONE, BUT ADD KEYS THAT ARE MISSING.
+	#
+	# "Leaving it alone" wholesale is how a new setting silently never reaches
+	# the box: on 2026-10-17 two keys added to omlx.env.example were invisible
+	# here, a `sed` to set them matched nothing, and the experiment they were
+	# for appeared to fail for an unrelated reason. The secret and any local
+	# overrides must survive a re-run — but a key the repo has learned about
+	# since the last install should arrive with it.
+	log "$STATE/omlx.env exists — keeping its values, adding any missing keys"
+	added=0
+	while IFS= read -r line; do
+		[[ "$line" =~ ^[A-Z_]+= ]] || continue
+		key="${line%%=*}"
+		grep -q "^${key}=" "$STATE/omlx.env" && continue
+		printf '%s\n' "$line" >> "$STATE/omlx.env"
+		log "  added $key"
+		added=$((added + 1))
+	done < "$HERE/omlx.env.example"
+	(( added )) && log "  $added new key(s) appended with their example defaults"
 else
 	install -m 0600 "$HERE/omlx.env.example" "$STATE/omlx.env"
 	# Generate the key here rather than making a human invent one. oMLX will

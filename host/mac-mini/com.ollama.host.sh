@@ -48,9 +48,25 @@ launchctl setenv OLLAMA_NUM_PARALLEL 2
 # vars. Detect that and restart it so it picks them up.
 sleep 3
 PID=$(pgrep -x ollama | head -1)
-if [ -n "$PID" ] && ! ps eww -p "$PID" | grep -q OLLAMA_KV_CACHE_TYPE; then
-  pkill -if 'Ollama.app' 2>/dev/null
-  pkill -ix ollama 2>/dev/null
-  sleep 2
-  open -a Ollama
+if [ -n "$PID" ]; then
+  # READ THE ENVIRONMENT ONCE, AND REQUIRE THE READ TO HAVE WORKED.
+  #
+  # This used to test `! ps eww -p "$PID" | grep -q OLLAMA_KV_CACHE_TYPE`
+  # directly, which cannot tell "this process is missing its env vars" from
+  # "this process no longer exists". A dying ollama produces empty output from
+  # `ps`, the grep finds nothing, and the self-heal concludes the env is
+  # missing and RESTARTS THE SERVER IT WAS IN THE MIDDLE OF STOPPING.
+  #
+  # That is not hypothetical: on 2026-10-16 it raced install.sh --cutover and
+  # brought Ollama back up seconds after it was deliberately stopped, with
+  # `open -a Ollama`, while oMLX was starting. Both runtimes do not fit in
+  # 48 GB, so the self-heal was one chat request away from causing the exact
+  # failure the cutover exists to avoid.
+  PROCENV=$(ps eww -p "$PID" 2>/dev/null)
+  if [ -n "$PROCENV" ] && ! printf '%s' "$PROCENV" | grep -q OLLAMA_KV_CACHE_TYPE; then
+    pkill -if 'Ollama.app' 2>/dev/null
+    pkill -ix ollama 2>/dev/null
+    sleep 2
+    open -a Ollama
+  fi
 fi

@@ -407,15 +407,30 @@ if (( FETCH_MODELS )); then
 fi
 
 # ─── The Ollama environment agent ────────────────────────────────────────────
-log "Installing the Ollama env LaunchAgent"
+# The FILES are always installed, so a rollback has them ready. Whether the
+# AGENT runs depends on which runtime serves, and that distinction is
+# load-bearing rather than tidiness.
+#
+# This agent exists only to hand the Ollama GUI app five env vars and to
+# self-heal if the Login Item won the boot race. With Ollama stopped, the first
+# job is meaningless and the second is actively harmful: the self-heal's job is
+# to start Ollama, so leaving it loaded while oMLX serves means a stray
+# invocation can resurrect the runtime the cutover just stopped — which is what
+# happened on 2026-10-16, seconds after the first cutover, via `open -a
+# Ollama`. Both runtimes do not fit in 48 GB.
+log "Installing the Ollama env LaunchAgent files"
 install -m 0755 "$HERE/com.ollama.host.sh" "$AGENTS/com.ollama.host.sh"
 sed "s|__HOME__|$HOME|g" "$HERE/com.ollama.host.plist.template" > "$AGENTS/com.ollama.host.plist"
 
 # `launchctl load` no longer runs RunAtLoad reliably on modern macOS; bootstrap
 # into the GUI domain instead. bootout first so a re-run replaces cleanly.
-launchctl bootout   "gui/$(id -u)/com.ollama.host" 2>/dev/null || true
-launchctl bootstrap "gui/$(id -u)" "$AGENTS/com.ollama.host.plist"
-launchctl kickstart -k "gui/$(id -u)/com.ollama.host"     # simulate a fresh login
+launchctl bootout "gui/$(id -u)/com.ollama.host" 2>/dev/null || true
+if [[ "$PRIMARY" == ollama ]]; then
+	launchctl bootstrap "gui/$(id -u)" "$AGENTS/com.ollama.host.plist"
+	launchctl kickstart -k "gui/$(id -u)/com.ollama.host"  # simulate a fresh login
+else
+	log "  left UNLOADED — $PRIMARY serves, so Ollama needs no env and must not be revived"
+fi
 
 # ─── The reconcile agent ─────────────────────────────────────────────────────
 log "Installing the reconcile script and its declared state"

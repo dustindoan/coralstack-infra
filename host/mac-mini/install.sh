@@ -84,16 +84,36 @@ PRIMARY="${PRIMARY:-ollama}"
 OLLAMA_SVC="com.ollama.ollama"
 
 stop_ollama() {
+	local uid; uid="$(id -u)"
 	log "Stopping Ollama and disabling its login item ($OLLAMA_SVC)"
-	launchctl bootout  "gui/$(id -u)/$OLLAMA_SVC" 2>/dev/null || true
-	launchctl disable  "gui/$(id -u)/$OLLAMA_SVC" 2>/dev/null || true
+
+	# DISABLE BEFORE BOOTOUT. THE ORDER IS THE WHOLE FIX.
+	#
+	# This function used to bootout first, and Ollama came back every time,
+	# ~2 seconds later, with PPID 1 and --fast-startup. Booting out a service
+	# that launchd is keeping alive gets it relaunched once; the `disable`
+	# landed after that decision, and the `pkill` below had already run, so
+	# the relaunched instance survived. Proved by hand on 2026-10-16: disable
+	# first, then kill, and it stayed down through 60s of watching, where the
+	# bootout-first order revived it four runs in a row.
+	launchctl disable "gui/$uid/$OLLAMA_SVC" 2>/dev/null || true
+	launchctl bootout "gui/$uid/$OLLAMA_SVC" 2>/dev/null || true
+
 	# AppleScript quit needs GUI permission and hangs headless — signals only.
-	pkill -if 'Ollama.app' 2>/dev/null || true
-	pkill -ix ollama 2>/dev/null || true
-	sleep 3
-	if pgrep -x ollama >/dev/null 2>&1; then
-		warn "ollama is STILL running after bootout+disable+kill — check launchctl print gui/$(id -u)/$OLLAMA_SVC"
-	fi
+	local attempt
+	for attempt in 1 2; do
+		pkill -if 'Ollama.app' 2>/dev/null || true
+		pkill -ix ollama 2>/dev/null || true
+		sleep 3
+		pgrep -x ollama >/dev/null 2>&1 || return 0
+		warn "ollama still running after attempt $attempt — retrying"
+	done
+
+	# Not a `die`: the caller decides. --cutover treats it as fatal because
+	# two resident runtimes do not fit; --upgrade-ollama does not care as much.
+	warn "ollama is STILL running after disable+bootout+2 kills."
+	warn "  Check: launchctl print-disabled gui/$uid | grep ollama"
+	return 1
 }
 
 # ─── Replacing a launchd agent without racing it ─────────────────────────────
@@ -227,7 +247,7 @@ if (( UPGRADE )); then
 		# replacement below and — if oMLX is the primary — bring Ollama back
 		# up alongside it. start_ollama re-enables the login item, and is
 		# called below only when Ollama is the runtime that serves.
-		stop_ollama
+		stop_ollama || true   # upgrade can proceed; the bundle swap just needs it down-ish
 
 		log "Replacing /Applications/Ollama.app"
 		rm -rf /Applications/Ollama.app
@@ -528,7 +548,10 @@ if [[ "$PRIMARY" == omlx ]]; then
 		log "  Run: bash $HERE/install.sh --install-omlx"
 	elif (( CUTOVER )); then
 		log "CUTOVER: stopping Ollama and starting oMLX"
-		stop_ollama
+		# Fatal here, unlike in the upgrade path: starting oMLX on top of a
+		# live Ollama is the 48 GB collision this whole design exists to
+		# prevent, so refuse rather than create it.
+		stop_ollama || die "refusing to start oMLX while Ollama is still running — both runtimes do not fit in 48 GB"
 
 		load_agent com.coralstack.omlx "$AGENTS/com.coralstack.omlx.plist"
 

@@ -333,6 +333,35 @@ count-vs-prose gap present. The fallbacks if it misses are in
 `omlx-models.txt`: an older revision of the same checkpoint, and an oQ6e-mtp at
 22 GB if 4.887 bits costs quality.
 
+### Result: the decode gate passes, and the first answer was wrong
+
+Measured 2026-10-16 on oMLX 0.7.1rc1 with `Qwen3.8-27B-oQ4e-mtp`, same box and
+same harness:
+
+| workload | Ollama | oMLX | delta |
+| --- | ---: | ---: | ---: |
+| count, ~850 tok | 36.8 | 31.2 | −15% |
+| prose, ~890 tok | 27.5 | **26.1** | **−5%** |
+| prose, ~12k tok | 25.4 | 24.2 | −5% |
+
+**COMPARE GENERATION-ONLY ON BOTH SIDES.** The first pass at this reported
+−34% and "gate failed", and it was wrong: Ollama's figure comes from
+`eval_duration`, which is the generation phase, while oMLX's log line —
+`512 tokens in 24.91s (20.6 tok/s)` — is the **whole request including
+prefill**. On a 12k prompt that lands at "4.5 tok/s", which is obviously not a
+decode rate and is what gave the error away. oMLX's generation-only time comes
+from its MTP telemetry (`backbone + mtp + sample`) or from
+`usage.generation_tokens_per_second`; the arithmetic checks out, since
+24.91s total − 16.8s generation leaves ~8.1s to prefill 847 tokens, i.e.
+~105 tok/s, which matches the spike's measured prefill.
+
+So on the workload the household actually feels, the two runtimes are within
+5% of each other. The MTP head in the checkpoint is doing its job
+(`mtp_enabled: True`, 2.2-3.5 tokens per cycle), and oMLX spends its deeper
+drafting on a slower cycle to arrive at roughly the same place. Prefill is the
+real regression at ~105 tok/s against Ollama's ~125, and that is the number the
+paged cache is supposed to make irrelevant.
+
 > Note one number that gets *worse* and does not matter: oMLX's cold prefill was
 > 110 tok/s in the spike against Ollama's 122-130 here, so a cache miss is
 > ~12% slower to recover from. The entire point is that misses stop happening,

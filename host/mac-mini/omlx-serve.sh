@@ -74,6 +74,43 @@ CACHE_MAX="${OMLX_SSD_CACHE_MAX_SIZE:-300GB}"
 HOT_CACHE_MAX="${OMLX_HOT_CACHE_MAX_SIZE:-1GB}"
 mkdir -p "$MODEL_DIR" "$CACHE_DIR"
 
+# ─── Settings that have no CLI flag ──────────────────────────────────────────
+# Some knobs exist ONLY in ~/.omlx/settings.json, which the server rewrites on
+# every startup. That is a hole in this file's "the flags are the desired
+# state" model: anything set by hand there is undeclared, and the next restart
+# may rewrite it. So the ones we care about are merged in here, before exec,
+# which makes them repo-owned and survives the rewrite.
+#
+# gdn_sidecar_precision — the storage codec for Gated DeltaNet recurrent state,
+#   which for this hybrid architecture is a large share of the cache. Options
+#   are fp32|bf16|int8|rht_int8|rht_int16 (jundot/omlx#2644). The default fp32
+#   is the most expensive; upstream #2700 measures bf16 at ~1.35x and rht_int8
+#   at ~1.62x the resident block count for under 5% on warm prefill, and #3284
+#   reports a sidecar bundle going 5.1GB -> 57MB.
+# gdn_snapshot_storage — auto|ssd_sidecar|embedded. THE CODEC ONLY APPLIES ON
+#   THE SIDECAR PATH: #2700 is open precisely because the `embedded` layout
+#   stores state as raw fp32 and the codec never reaches it. So setting a codec
+#   without forcing ssd_sidecar may do nothing at all.
+GDN_PRECISION="${OMLX_GDN_PRECISION:-fp32}"
+GDN_STORAGE="${OMLX_GDN_STORAGE:-auto}"
+SETTINGS="${OMLX_SETTINGS_FILE:-$HOME/.omlx/settings.json}"
+
+if command -v jq >/dev/null 2>&1; then
+	mkdir -p "$(dirname "$SETTINGS")"
+	[[ -s "$SETTINGS" ]] || printf '{}
+' > "$SETTINGS"
+	_tmp="$(mktemp)"
+	if jq --arg prec "$GDN_PRECISION" --arg store "$GDN_STORAGE" \
+		'.cache = ((.cache // {}) | .gdn_sidecar_precision = $prec | .gdn_snapshot_storage = $store)' \
+		"$SETTINGS" > "$_tmp" 2>/dev/null; then
+		mv "$_tmp" "$SETTINGS"
+		print -u2 "[omlx-serve] settings: gdn_sidecar_precision=$GDN_PRECISION gdn_snapshot_storage=$GDN_STORAGE"
+	else
+		rm -f "$_tmp"
+		print -u2 "[omlx-serve] WARNING: could not merge settings into $SETTINGS; continuing"
+	fi
+fi
+
 exec "$OMLX_CLI" serve \
 	--host 0.0.0.0 \
 	--port "$OMLX_PORT" \

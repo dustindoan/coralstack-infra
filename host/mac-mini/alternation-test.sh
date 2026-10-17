@@ -11,6 +11,10 @@
 set -uo pipefail
 MODEL="${1:-Qwen3.8-27B-oQ4e-mtp}"
 PORT="${2:-8000}"
+# Bytes of hex filler per conversation. ~1.965 tokens per byte, measured against
+# /tokenize, so 23407 ~= 46k tokens and 117000 ~= 230k. The model's own limit is
+# 262,144 (max_model_len), and the appended turns need room under it.
+FILLER_BYTES="${3:-117000}"
 KEY="$(sed -n 's/^OMLX_API_KEY=//p' "$HOME/.coralstack/omlx.env" | head -1)"
 URL="http://127.0.0.1:${PORT}/v1/chat/completions"
 W=/tmp/alt-work; mkdir -p "$W"
@@ -30,7 +34,7 @@ for c in A B; do
 	# memory cap, and produced no usable row. Worth knowing that killing this
 	# script does NOT cancel the request — curl dies, oMLX keeps prefilling
 	# server-side, so a restart of the agent is what actually stops it.
-	[[ -f "$W/filler-$c" ]] || openssl rand -hex 23407 | fold -w7 | paste -sd' ' - > "$W/filler-$c"
+	[[ -f "$W/filler-$c" ]] || openssl rand -hex "$FILLER_BYTES" | fold -w7 | paste -sd' ' - > "$W/filler-$c"
 done
 
 # call <conv> <extra-turns> <label>
@@ -46,7 +50,11 @@ call() {
 	local body; body="$(jq -n --arg m "$MODEL" --argjson ms "$msgs" \
 		'{model:$m, messages:$ms, stream:false, temperature:0, max_tokens:1}')"
 	local t0 t1 r; t0="$(date +%s)"
-	r="$(curl -sS -m 1800 "$URL" -H "Authorization: Bearer $KEY" \
+	# 2 HOURS, NOT 30 MINUTES. A cold prefill is ~418s at 46k and scales
+	# roughly linearly, so ~40 minutes at 230k — the old -m 1800 would have
+	# aborted the client mid-prefill while the server carried on working,
+	# which is the worst of both outcomes.
+	r="$(curl -sS -m 7200 "$URL" -H "Authorization: Bearer $KEY" \
 		-H 'Content-Type: application/json' -d "$body")"
 	t1="$(date +%s)"
 	jq -r --arg l "$label" --argjson wall "$((t1 - t0))" '

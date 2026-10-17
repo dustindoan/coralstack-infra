@@ -70,8 +70,8 @@ OMLX_PORT="${OMLX_PORT:-8000}"
 
 MODEL_DIR="${OMLX_MODEL_DIR:-$HOME/.omlx/models}"
 CACHE_DIR="${OMLX_SSD_CACHE_DIR:-$HOME/.omlx/cache}"
-CACHE_MAX="${OMLX_SSD_CACHE_MAX_SIZE:-40GB}"
-HOT_CACHE_MAX="${OMLX_HOT_CACHE_MAX_SIZE:-10GB}"
+CACHE_MAX="${OMLX_SSD_CACHE_MAX_SIZE:-300GB}"
+HOT_CACHE_MAX="${OMLX_HOT_CACHE_MAX_SIZE:-1GB}"
 mkdir -p "$MODEL_DIR" "$CACHE_DIR"
 
 exec "$OMLX_CLI" serve \
@@ -81,7 +81,7 @@ exec "$OMLX_CLI" serve \
 	--paged-ssd-cache-dir "$CACHE_DIR" \
 	--paged-ssd-cache-max-size "$CACHE_MAX" \
 	--hot-cache-max-size "$HOT_CACHE_MAX" \
-	--memory-guard balanced \
+	--memory-guard aggressive \
 	--max-concurrent-requests 4 \
 	"$@"
 
@@ -110,7 +110,7 @@ exec "$OMLX_CLI" serve \
 #   over the status quo rather than a new one. Binding the static 10.0.1.10
 #   instead would be tighter but breaks if the lease ever moves.
 #
-# --paged-ssd-cache-max-size 40GB
+# --paged-ssd-cache-max-size 300GB
 #   NOT the default, which `serve --help` on 0.7.1rc1 gives as 100GB. (The
 #   README says `auto`, meaning 50% of free disk, which would be ~400 GB here —
 #   another place the docs for the default branch describe a different build.
@@ -121,18 +121,36 @@ exec "$OMLX_CLI" serve \
 #   stopped keeping one full-state tail per turn on GDN layouts, so this
 #   figure depends on being on 0.7.0 or later.
 #
-# --hot-cache-max-size 10GB
-#   ABSOLUTE, NOT A PERCENTAGE, and NOT a default. Two corrections learned by
-#   crashing (2026-10-16): the README documents a `20%` form, and 0.7.1rc1
-#   rejects it outright — "Configuration error: Invalid hot_cache_max_size:
-#   Invalid size string: 20%" — and its own help says the default is
-#   "0 (disabled)", so leaving this out would have shipped the in-memory tier
-#   switched off entirely. `serve --help` says '8GB', '4GB'.
+# --hot-cache-max-size 1GB
+#   DELIBERATELY SMALL, because this cache COMPETES WITH THE ACTIVE CONTEXT
+#   and the active context matters far more.
 #
-#   10GB is the arithmetic the old comment claimed for 20%: ~10 of 48 GB on
-#   top of ~15 GB of weights, against a ~44 GiB wired ceiling. That headroom
-#   is what makes "one runtime serves at a time" a hard constraint rather than
-#   a preference.
+#   What this tier is: an in-RAM holding area for the cache blocks of
+#   conversations that are NOT currently generating. The active conversation's
+#   KV is separate — the scheduler logs it as "Reserved prefill capacity".
+#   So this is purely the fast lane for switching BACK to a recent
+#   conversation without reading from SSD.
+#
+#   WHY IT IS NEARLY WORTHLESS HERE, from the 2026-10-16 spike's own rows:
+#   "A after B" (served from RAM) took 2.9s and "A after a full oMLX restart"
+#   (which clears RAM, so served from SSD) took 3.0s. One tenth of a second
+#   between the tiers. The SSD tier is already fast enough that the RAM tier
+#   buys essentially nothing.
+#
+#   AND IT WAS CAPPING THE CONTEXT. The guard reports max_bytes 33.6GB. Take
+#   16.6GB of weights off that and ~17GB remains for caches, at a measured
+#   61 KB per token:
+#       hot cache 10GB -> ~114k tokens max context
+#       hot cache  8GB -> ~147k
+#       hot cache  2GB -> ~237k
+#       hot cache ~0   -> ~262k, i.e. the model's own limit
+#   A 10GB hot tier therefore silently capped this box at ~114k tokens to buy
+#   a 0.1s improvement on switching. 1GB trades that away for the model's full
+#   262,144-token context.
+#
+#   Absolute sizes only, and not optional: 0.7.1rc1 rejects the `20%` form the
+#   README documents ("Invalid size string: 20%"), and its help gives the
+#   default as "0 (disabled)", so omitting the flag switches the tier off.
 #
 # --memory-guard balanced
 #   What the spike ran. 0.7.0 rebuilt the guard; `balanced` keeps ~8% of RAM

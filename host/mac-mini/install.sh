@@ -275,11 +275,14 @@ if (( INSTALL_OMLX )); then
 		# version spells it. Without this, an invocation change would fail the
 		# flag loop below and report every flag as missing, which points at
 		# entirely the wrong thing.
-		grep -q -- '--headless' <<<"$help" || help="$("$cli" --help 2>&1 || true)"
-		if ! grep -q -- '--headless' <<<"$help"; then
+		grep -q -- '--model-dir' <<<"$help" || help="$("$cli" --help 2>&1 || true)"
+		if ! grep -q -- '--model-dir' <<<"$help"; then
 			die "could not read a flag list from omlx-cli $want (tried 'serve --help' and '--help') — check the CLI by hand before installing"
 		fi
-		for flag in --headless --host --model-dir --paged-ssd-cache-dir \
+		# Mirrors exactly what omlx-serve.sh passes. Keep the two in step: a
+		# flag checked here but not passed is noise, and one passed but not
+		# checked is the crash loop this exists to prevent.
+		for flag in --host --port --model-dir --paged-ssd-cache-dir \
 		            --paged-ssd-cache-max-size --hot-cache-max-size \
 		            --memory-guard --max-concurrent-requests
 		do

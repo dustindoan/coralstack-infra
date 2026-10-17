@@ -267,20 +267,42 @@ column survives an agent switch and a restart, where Ollama's did not. SSD cost
 is ~6.4 GB per 46k conversation (2.9 GB of KV at 64 KB/token plus ~3.5 GB of
 Gated DeltaNet state snapshots).
 
-### The decode gate, which is the part that can still go wrong
+### The decode gate, and the model choice it forced
 
 Every spike call used `max_tokens: 1`, so **oMLX's decode rate is unmeasured**,
-and the household feels decode, not prefill. Worse, the conversion in use
-(`mlx-community/Qwen3.8-27B-nvfp4`) has **no MTP head**, and oMLX 0.7.0's
-headline decode work on this exact model is MTP-based — "Exact Lightning MTP",
-fused MoE/DeltaNet kernels for "MTP verify windows", DFlash2 doing less work per
-verify cycle on Qwen3.8-27B. A conversion without the head can use none of it.
+and the household feels decode where the agents feel prefill. That gap turned
+out to matter more than the spike implied, because of one line in Ollama's own
+server log on the live box (2026-10-16):
 
-So "the household chat still works" is not a sufficient criterion: a 2× decode
-regression passes it while being a real downgrade for the people who use this
-box most. **Measure decode against the 2026-10-14 baseline of 24-30 tok/s
-before the household is cut over**, same harness. If it lands materially under,
-the first thing to reach for is a different conversion, not a different server.
+```
+msg="speculative decode stats" iterations=60 drafted=120 accepted=100 acceptance=0.83
+```
+
+That is Ollama getting **~1.8 accepted tokens per decode step** out of Qwen3.8's
+multi-token-prediction head. oMLX has the verify loop too — 0.7.x spent most of
+its release notes on it, "Exact Lightning MTP" and fused kernels for "MTP verify
+windows" on Qwen3.8-27B specifically — but **the head has to be in the
+checkpoint**, and the conversion the spike used had it stripped. The weight map
+is the discriminator, not the repo name:
+
+| Conversion | MTP weight keys | Size |
+| --- | --- | --- |
+| `mlx-community/Qwen3.8-27B-nvfp4` | **0** of 1,682 | 15.45 GB |
+| `Jundot/Qwen3.8-27B-oQ4e-mtp` | **29** of 2,209 | ~15 GB |
+
+So the declared model is the second one — published by the oMLX author in
+oMLX's own oQ format, 4.887 effective bits/weight, imatrix-quantised with
+KL-divergence tables against BF16 on its model card, at the same footprint. Had
+this not been caught, the box would have been running a heavily MTP-optimised
+engine on a model that cannot drive it, and the symptom would have been "the
+new thing feels slower" with no obvious cause.
+
+**It is still a gate.** "The household chat still works" is not a sufficient
+criterion — a 2× decode regression passes it while being a real downgrade for
+the people who use this box most. Measure decode against the 2026-10-14
+baseline of 24-30 tok/s on the same harness before the household is cut over.
+The remaining fallbacks are recorded in `omlx-models.txt`: an older revision of
+the same checkpoint, and an oQ6e-mtp at 22 GB if 4.887 bits costs quality.
 
 ### One runtime serves at a time, and the switch is one line
 
@@ -312,14 +334,15 @@ stopping oMLX first.
 Above, this doc records Ollama being chosen "over Homebrew because it
 auto-updates and ships the CLI" — and nearly every incident since traces to that
 sentence. The instinct to prefer a no-updater install for oMLX is right, and the
-tap defeats it for two measured reasons (2026-10-16): the formula's `url` tracked
-`v0.7.1rc1` with no versioned formulae to pin against, so `brew install` would
-ignore `versions.env` and the pin would be decorative; and its custom kernels
-need **full Xcode**, not the CLT — its own guard says "`metal` ships with Xcode,
-not the Command Line Tools" — where `qwen35_prefill` is the prefill path for
-this model's architecture and `decode_fast` the decode path. A brew build
-without Xcode silently omits both, so it would be a slower binary than the one
-the spike measured.
+tap defeats it for two measured reasons (2026-10-16): the formula's `url` moves
+with upstream and the tap carries no versioned formulae, so `brew install` would
+install whatever the tap currently points at and `versions.env` would be
+decorative — the pin has to bind, whichever release it names; and its custom
+kernels need **full Xcode**, not the CLT — its own guard says "`metal` ships
+with Xcode, not the Command Line Tools" — where `qwen35_prefill` is the prefill
+path for this model's architecture and `decode_fast` the decode path. A brew
+build without Xcode silently omits both, so it would be a slower binary than
+the one the spike measured.
 
 The DMG ships those kernels precompiled and bundles its own CPython 3.11 and
 MLX, needing no toolchain. **The updater objection is answered structurally, not
@@ -335,6 +358,52 @@ reconcile reports a copy appearing in `/Applications` as a finding.
 > from a checkout of this repo" cannot be followed there, and why deploying to
 > it needs the `git archive` + `scp` staging pattern. Installing them retires
 > all three workarounds and costs nothing this design depends on.
+
+### An "rc" tag is this project's release train
+
+`versions.env` pins **0.7.1rc1**, and that is upstream's current release rather
+than a prerelease taken on. GitHub's `releases/latest` returns `v0.7.1rc1` with
+`prerelease=false` and `draft=false`, and the project's homepage download button
+points at `releases/latest`.
+
+An earlier draft of this change got that backwards, and the failure would have
+been invisible. It read `prerelease=false` on an "rc" tag as upstream
+mislabelling its prereleases, and used `versioning: semver` in `renovate.json`
+to filter them — `0.7.1rc1` is not valid semver, so Renovate skips it. That
+does not mean "hold until a stable release"; it means the dependency goes quiet
+while the pin sits on an old version and every check reports green. **That is
+the same shape as the four months this repo spent not hearing about Ollama,
+reached from the opposite direction.** `renovate.json` now sets versioning per
+package — `ollama/ollama` stays semver, `jundot/omlx` gets pep440, which
+understands rc tags — with `ignoreUnstable` off and `allowedVersions` excluding
+only `.dev` snapshots.
+
+Pinning an rc on the household's chat server is a real choice, and it is the
+one this host is already graded for: the mini is where a bad update costs
+nothing, which is the same risk inversion that makes model pulls automatic here
+and nowhere else.
+
+### Read the installed binary's help, not the docs for `main`
+
+Two findings from the installed binary that the flag check in `install.sh`
+caught before anything was installed, and they are the argument for that check
+existing:
+
+- **`--headless` does not exist in 0.7.0.** The README on the default branch
+  documents it, and the first draft of `omlx-serve.sh` passed it. `serve
+  --help` on the 0.7.0 binary lists every other flag in that file and not that
+  one. Under a `KeepAlive` agent this would have been a 30-second crash loop
+  whose only symptom was a log file nobody reads.
+- **`OMLX_API_KEY` *is* read from the environment**, verified by binding
+  `0.0.0.0` with no `--api-key` flag — which the server refuses without a key.
+  So the key stays out of `ps`.
+
+> **A consequence to check once it is serving.** 0.7.0 had no way to switch the
+> web UI off, so the admin dashboard at `/admin` and the chat UI at
+> `/admin/chat` share the API's port, and with `--host 0.0.0.0` they are
+> reachable from the household LAN. Whether a browser can reach `/admin`
+> without the key is unverified. If it is open, the options are a loopback bind
+> behind a proxy, or `--headless` if 0.7.1rc1 has it.
 
 ### Binding, the key, and the cache
 

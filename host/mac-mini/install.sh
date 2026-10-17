@@ -87,17 +87,20 @@ stop_ollama() {
 	local uid; uid="$(id -u)"
 	log "Stopping Ollama and disabling its login item ($OLLAMA_SVC)"
 
-	# DISABLE BEFORE BOOTOUT. THE ORDER IS THE WHOLE FIX.
+	# DISABLE, THEN KILL. DO NOT `bootout`.
 	#
-	# This function used to bootout first, and Ollama came back every time,
-	# ~2 seconds later, with PPID 1 and --fast-startup. Booting out a service
-	# that launchd is keeping alive gets it relaunched once; the `disable`
-	# landed after that decision, and the `pkill` below had already run, so
-	# the relaunched instance survived. Proved by hand on 2026-10-16: disable
-	# first, then kill, and it stayed down through 60s of watching, where the
-	# bootout-first order revived it four runs in a row.
+	# `bootout` on this service is what kept reviving Ollama — five cutover
+	# runs in a row, each time ~2 seconds to ~40 seconds after the kill, with
+	# PPID 1 and --fast-startup, while `launchctl print-disabled` insisted the
+	# service was disabled. Booting out a service launchd is keeping alive
+	# gets it relaunched once, and the `disable` override does not prevent
+	# that; reordering disable before bootout made no difference.
+	#
+	# Isolated by hand on 2026-10-16: `disable` + `pkill`, with NO bootout,
+	# stayed down through 60s of watching. The bootout is simply not needed —
+	# `disable` stops launchd starting it again, including after a reboot, and
+	# the kill handles the instance that is already up.
 	launchctl disable "gui/$uid/$OLLAMA_SVC" 2>/dev/null || true
-	launchctl bootout "gui/$uid/$OLLAMA_SVC" 2>/dev/null || true
 
 	# AppleScript quit needs GUI permission and hangs headless — signals only.
 	local attempt
@@ -578,6 +581,21 @@ if [[ "$PRIMARY" == omlx ]]; then
 		done
 
 		if (( ready )); then
+			# CHECK OLLAMA AGAIN, AFTER oMLX IS UP. The relaunches that
+			# plagued this cutover all landed AFTER stop_ollama had returned
+			# clean — anywhere from 2 to 40 seconds later — so a single check
+			# inside stop_ollama cannot prove it stayed down. By here, between
+			# the readiness poll and the model scan, enough time has passed
+			# for a late relaunch to have shown itself.
+			if pgrep -x ollama >/dev/null 2>&1; then
+				warn "Ollama came back up AFTER being stopped — killing it again"
+				pkill -if 'Ollama.app' 2>/dev/null || true
+				pkill -ix ollama 2>/dev/null || true
+				sleep 3
+				pgrep -x ollama >/dev/null 2>&1 \
+					&& warn "it is STILL up; oMLX is serving but the box is one chat request away from loading both models" \
+					|| log "  (second kill took; Ollama is down)"
+			fi
 			log "oMLX is serving on :$port. Ollama is stopped and its login item"
 			log "  is disabled, so a reboot will not bring it back alongside oMLX."
 			log "  Rollback: MINI_PRIMARY_RUNTIME=ollama in versions.env plus a re-run."

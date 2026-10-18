@@ -94,6 +94,16 @@ mkdir -p "$MODEL_DIR" "$CACHE_DIR"
 #   codec never reaches it, so `rht_int8` with `auto` may quietly do nothing.
 GDN_PRECISION="${OMLX_GDN_PRECISION:-rht_int8}"
 GDN_STORAGE="${OMLX_GDN_STORAGE:-ssd_sidecar}"
+# chunked_prefill — WHETHER ONE HUGE PROMPT CAN FREEZE THE SERVICE.
+#   There is no server-side context cap, so a single 262k prompt occupies the
+#   GPU for over an hour. With prefill running as one indivisible block, every
+#   other request waits behind it: the household's chat, a sub-agent, anything.
+#   That is self-inflicted rather than adversarial — a member pasting a long
+#   document does it by accident — but on a shared co-op service the
+#   distinction does not help the people who cannot chat.
+#   Chunking the prefill lets it interleave with other requests' decode, so a
+#   long prompt makes everyone slower instead of making everyone wait.
+CHUNKED_PREFILL="${OMLX_CHUNKED_PREFILL:-true}"
 SETTINGS="${OMLX_SETTINGS_FILE:-$HOME/.omlx/settings.json}"
 
 if command -v jq >/dev/null 2>&1; then
@@ -102,10 +112,12 @@ if command -v jq >/dev/null 2>&1; then
 ' > "$SETTINGS"
 	_tmp="$(mktemp)"
 	if jq --arg prec "$GDN_PRECISION" --arg store "$GDN_STORAGE" \
-		'.cache = ((.cache // {}) | .gdn_sidecar_precision = $prec | .gdn_snapshot_storage = $store)' \
+		--argjson chunked "$CHUNKED_PREFILL" \
+		'.cache = ((.cache // {}) | .gdn_sidecar_precision = $prec | .gdn_snapshot_storage = $store)
+		 | .scheduler = ((.scheduler // {}) | .chunked_prefill = $chunked)' \
 		"$SETTINGS" > "$_tmp" 2>/dev/null; then
 		mv "$_tmp" "$SETTINGS"
-		print -u2 "[omlx-serve] settings: gdn_sidecar_precision=$GDN_PRECISION gdn_snapshot_storage=$GDN_STORAGE"
+		print -u2 "[omlx-serve] settings: gdn_sidecar_precision=$GDN_PRECISION gdn_snapshot_storage=$GDN_STORAGE chunked_prefill=$CHUNKED_PREFILL"
 	else
 		rm -f "$_tmp"
 		print -u2 "[omlx-serve] WARNING: could not merge settings into $SETTINGS; continuing"

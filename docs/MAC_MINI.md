@@ -758,6 +758,47 @@ warning persists. Clearing it entirely needs
 `sudo sysctl iogpu.wired_limit_mb=46694`, which needs root and does not
 survive a reboot. The 230k run peaked near 31.6 GB, so there is real headroom.
 
+### One large prompt can freeze the service, and config only half-fixes it
+
+There is no server-side context cap: `omlx-cli serve` has no max-context flag,
+so a client can send up to the model's 262,144 tokens and occupy the GPU for
+over an hour. The question is what that does to everyone else.
+
+Measured 2026-10-17 — a 24-token request sent 10 seconds into a cold 46k
+prefill, timed end to end:
+
+| `scheduler.chunked_prefill` | small request latency |
+| --- | ---: |
+| `false` (upstream default) | **409 s** |
+| `true` | **58 s** |
+
+With chunking off the small request waits for the **entire** prefill: the
+service is frozen, not degraded. Chunking lets it interleave, a 7× improvement,
+and it is now the declared default in `omlx-serve.sh`.
+
+**But 58 s for a 24-token reply is still a bad experience, and it scales with
+the offending prompt** — roughly 3 minutes at 128k instead of 25. So config
+mitigates and does not solve. Worth being clear about the three separable
+layers:
+
+1. **Can one request monopolise the GPU?** `chunked_prefill = true`. Done, 7×.
+2. **Can a client send an unbounded prompt?** Nothing here prevents it. Do not
+   expose oMLX publicly — which also retires the "Caddy vhost straight to the
+   mini" fallback suggested earlier in this document. If the surface ever does
+   widen, a request-body size limit at the edge is a crude but effective proxy
+   for a context cap (~128k tokens is roughly 500 KB of JSON).
+3. **Should the exposed surface be an agent rather than a model?** A managed
+   agent with a configured context window cannot send a 262k prompt; a raw
+   OpenAI-compatible endpoint always can. Letta does own context ceilings and
+   compacts before overflowing — but its compaction REWRITES history, so it
+   buys the cap by spending the cache. See below.
+
+Note this is self-inflicted before it is adversarial: a member pasting a long
+document into the household chat causes it by accident, and the distinction
+does not help the people who cannot chat. Also noted for whenever the surface
+widens: `server.cors_origins` is `["*"]`, which the mandatory API key makes
+non-exploitable on its own but is loose.
+
 ### The load-bearing assumption, and where it breaks
 
 Everything above depends on the prefix being **append-only**, because the cache
@@ -774,6 +815,14 @@ here. Two consequences worth designing around:
 - **Summarisation must append, not rewrite.** A pass that appends a summary and
   truncates only the tail keeps the prefix valid. One that rewrites history
   destroys the cache as thoroughly as a memory edit.
+
+**And this is the same problem as the context cap above.** Letta's compaction
+is what would enforce a ceiling, and compaction is what invalidates the prefix.
+So both the DoS surface and the cache depend on one decision: *when is the
+prefix allowed to change?* Batch memory writes and compaction into a scheduled
+window, keep the ceiling low enough that a forced rebuild fits inside it, and
+outside that window the prefix stays append-only and the 1-second switches
+hold. One window answers both.
 
 ### Why oMLX is slower at decode, and why that is not oMLX's fault
 

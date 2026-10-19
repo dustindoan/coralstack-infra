@@ -1,0 +1,71 @@
+# Declared model set for oMLX on the Mac mini — one Hugging Face repo per line
+# as `repo@revision`.
+#
+# WHY A SECOND FILE rather than more lines in models.txt: these are not Ollama
+# tags and they do not reconcile the same way. An Ollama tag is resolved by the
+# registry and verified with `ollama list`; an entry here is a repo plus a
+# commit, verified against the revision recorded in the snapshot on disk. One
+# file per identifier space, so neither reconcile path has to guess which kind
+# of name it is holding.
+#
+# PIN THE REVISION, NEVER A BRANCH. `main` on a model repo is rewritten in
+# place: the numerics of a quantisation can change under you with no version to
+# bump and no release notes, and a silently different conversion is the hardest
+# kind of regression to see from a chat window. Short hashes are fine — the
+# reconcile compares prefixes.
+#
+# Renovate does NOT watch this file. There is no Hugging Face datasource in play
+# here (checked 2026-10-16 and not confirmed to exist), so unlike versions.env
+# nothing opens a PR when a repo moves. That is deliberate rather than a gap: a
+# pinned revision cannot drift, and the reconcile verifies the pin holds.
+#
+# Check a repo and revision exist before committing them:
+#   curl -sf https://huggingface.co/api/models/<repo>/revision/<rev> | jq .sha
+
+# Primary chat + agent model: Qwen3.8-27B with its MULTI-TOKEN PREDICTION
+# HEAD, in oMLX's own oQ format, published by the oMLX author.
+#
+# WHY THE MTP HEAD DECIDED THIS. Measured on the live box 2026-10-16, from
+# Ollama's own server log while it was serving:
+#
+#   msg="speculative decode stats" iterations=60 drafted=120 accepted=100
+#   acceptance=0.83
+#
+# That is ~1.8 accepted tokens per decode step out of the head, and decode is
+# what the household feels — prefill is what the agents feel. oMLX has the
+# verify loop and 0.7.x spent most of its release notes on it ("Exact Lightning
+# MTP", fused MoE/DeltaNet kernels for "MTP verify windows", DFlash2 doing less
+# work per verify cycle on Qwen3.8-27B specifically). So the head has to be in
+# the checkpoint for any of that to apply.
+#
+# The weight map is the discriminator, not the repo name: 29 MTP keys of 2,209
+# here, including language_model.mtp.fc.weight and language_model.mtp.layers.*.
+#
+# 4.887 effective bits/weight, imatrix-quantised, with KL-divergence tables
+# against the original BF16 on the model card. ~15 GB, so essentially the same
+# footprint as a plain nvfp4 convert.
+#
+# Quantised with oMLX v0.7.1's Improved oQe (jundot/omlx#4385), so it is
+# matched to the server pin: versions.env pins 0.7.1rc1, which is upstream's
+# current release. Two documented fallbacks if that pin is ever rolled back:
+# revision 04dc5509 of this same repo (2026-08-17, pre-Improved-oQe, loads on
+# 0.7.0, measurably worse KL divergence per the model card), and the oQ6e-mtp
+# at 22 GB (dc2eaae3f1ed016a42f5e7320d5f639e1b9acf20) if 4.887 bits costs
+# quality the household notices.
+Jundot/Qwen3.8-27B-oQ4e-mtp@49c1d60
+
+# NOT DECLARED, DELIBERATELY: mlx-community/Qwen3.8-27B-nvfp4@5ff8ef1.
+#
+# It is the conversion the 2026-10-16 spike measured (419s cold, then ~3s per
+# call with ~46k cached), so declaring it would make those numbers directly
+# reproducible here. It also has the MTP head STRIPPED — 0 MTP weight keys of
+# 1,682 — which is how that gap was found in the first place.
+#
+# Left out because the comparison that matters is oMLX-with-MTP against
+# OLLAMA-with-MTP: both driving the head, which is the question the household
+# actually poses. Putting the headless convert on oMLX would only quantify the
+# cost of the missing head, and acceptance=0.83 above already implies that.
+#
+# The cost of leaving it out is worth knowing: if the cache behaviour on this
+# box disagrees with the spike, there is no second model here to tell whether
+# it is the conversion or the server. Fetch it then.

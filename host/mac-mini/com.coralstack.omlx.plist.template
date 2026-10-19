@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- CoralStack: oMLX, the inference server for the Mac mini.
+     __HOME__ is substituted by install.sh — launchd does not expand $HOME.
+     See docs/MAC_MINI.md and host/mac-mini/omlx-serve.sh.
+
+     RunAtLoad + KeepAlive, which is the shape Ollama could never have. Ollama
+     is a menu-bar GUI app started by a Login Item, so launchd could only ever
+     set its environment and hope; `omlx-cli serve --headless` is an ordinary
+     foreground process, so launchd supervises it directly and restarts it if
+     it dies. Nothing has to race anything at boot.
+
+     NO API KEY IN THIS FILE. The wrapper sources ~/.coralstack/omlx.env, so
+     the secret stays out of ~/Library/LaunchAgents and out of `ps`.
+
+     THROTTLEINTERVAL 30, not the default 10. A misconfiguration this agent
+     cannot survive — an empty model dir, a flag upstream renamed, a missing
+     key — turns into a crash loop, and at 10s that loop writes to the log
+     file six times a minute forever. 30s still recovers a genuine crash
+     promptly while leaving the log readable.
+
+     A LaunchAgent, not a LaunchDaemon, and that is a compromise worth naming.
+     A daemon would start before login and survive logout, which suits a
+     server with no GUI need at all. It would also mean a root install, and
+     install.sh deliberately refuses to run as root because everything else
+     on this box is user-owned. The mini already assumes auto-login for
+     Ollama's sake, so an agent loses nothing today — but if the auto-login
+     assumption is ever removed, this is the file to revisit. -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key><string>com.coralstack.omlx</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>/bin/zsh</string>
+      <string>__HOME__/.coralstack/omlx-serve.sh</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>OMLX_ENV</key><string>__HOME__/.coralstack/omlx.env</string>
+      <key>OMLX_STATE_DIR</key><string>__HOME__/.coralstack</string>
+    </dict>
+    <key>RunAtLoad</key><true/>
+    <key>KeepAlive</key><true/>
+    <key>ThrottleInterval</key><integer>30</integer>
+    <key>StandardOutPath</key><string>__HOME__/.coralstack/logs/omlx.log</string>
+    <key>StandardErrorPath</key><string>__HOME__/.coralstack/logs/omlx.log</string>
+  </dict>
+</plist>

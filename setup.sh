@@ -819,5 +819,14 @@ if [[ -n "${OLLAMA_MINI_PUSH_TOKEN:-}" ]]; then
      Public URL again, and for the same reason. Until this is set the mini's
      daily reconcile still runs and still exits non-zero — but nothing is
      listening, so a lagging Ollama or a missing model reaches nobody.
+
+  7. ALSO ON THE MAC MINI, and in the other direction: install.sh generates an
+     oMLX API key and prints it once. Paste that value into
+     services/open-webui/.env here as OMLX_API_KEY.
+
+     This one FAILS LOUDLY rather than quietly — open-webui's compose file
+     declares it required, so the deploy refuses to start without it. That is
+     deliberate: an inference server the household cannot reach is worth a
+     failed deploy, not a silent 401. See docs/MAC_MINI.md.
 EOF
 fi

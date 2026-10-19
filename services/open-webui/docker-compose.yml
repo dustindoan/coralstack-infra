@@ -13,9 +13,40 @@ services:
     volumes:
       - ${DATA_PATH:?DATA_PATH must be set — run ./setup.sh}/open-webui:/app/backend/data
     environment:
-      # Ollama runs on the Mac mini, reachable via OPNsense OPT1 routing.
-      # MAC_MINI_IP is set in the root .env (10.0.1.10 after Phase 4c).
-      OLLAMA_BASE_URL: http://${MAC_MINI_IP:?MAC_MINI_IP must be set in .env — see docs/PROXMOX_MIGRATION.md Phase 4c}:11434
+      # ─── Inference: oMLX on the Mac mini ──────────────────────────────────
+      # The mini serves the primary model through oMLX, not Ollama, because
+      # Ollama's MLX runner keeps ONE prompt-prefix cache and two long-lived
+      # agents evict each other out of it — about 7 minutes of cold prefill
+      # per switch. oMLX keeps a paged SSD cache per conversation instead.
+      # See docs/MAC_MINI.md.
+      #
+      # OpenAI-compatible, not Ollama-shaped: oMLX exposes /v1. The key is
+      # mandatory — oMLX refuses a non-loopback bind without one, which is a
+      # straight improvement on Ollama listening on 0.0.0.0 with no auth.
+      # OMLX_API_KEY is generated on the mini by install.sh and pasted into
+      # this service's .env BY HAND; nothing detects a mismatch except a 401.
+      OPENAI_API_BASE_URL: http://${MAC_MINI_IP:?MAC_MINI_IP must be set in .env — see docs/PROXMOX_MIGRATION.md Phase 4c}:8000/v1
+      OPENAI_API_KEY: ${OMLX_API_KEY:?OMLX_API_KEY must be set in services/open-webui/.env — generated on the mini by host/mac-mini/install.sh}
+
+      # Ollama stays configured but DISABLED, which is the rollback. 48 GB
+      # cannot hold both runtimes' weights and caches, so leaving the API on
+      # would put five models in the household's picker where selecting the
+      # wrong one squeezes the box. Rollback is: flip this to "true", set
+      # MINI_PRIMARY_RUNTIME=ollama in host/mac-mini/versions.env, re-run
+      # install.sh on the mini, redeploy here.
+      ENABLE_OLLAMA_API: "false"
+      OLLAMA_BASE_URL: http://${MAC_MINI_IP}:11434
+
+      # Open WebUI fires its own inference for chat titles and tags. Each one
+      # is a fresh cold prefill on a 27B model, competing for the same GPU as
+      # a member's reply and an agent's 46k-token prefill. Off here.
+      #
+      # CONFIRM THESE IN Admin Settings → Interface after deploying: Open
+      # WebUI ignores an environment variable it does not recognise, without
+      # an error, so a name that has changed between versions looks exactly
+      # like a setting that worked.
+      ENABLE_TITLE_GENERATION: "false"
+      ENABLE_TAGS_GENERATION: "false"
       # Require login — members sign in via Pocket ID SSO.
       WEBUI_AUTH: "true"
       # Pocket ID OIDC. Login button appears once OAUTH_CLIENT_ID is set in .env.

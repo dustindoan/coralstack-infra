@@ -15,11 +15,10 @@
   "minimumReleaseAge": "3 days",
   "customManagers": [
     {
-      "description": "The Mac mini's Ollama version. It is a shell-style pin in host/mac-mini/versions.env, not an image tag in a compose file, so Renovate needs to be told where to look. The mini is headless and Ollama's own updater needs a menu-bar click, so a PR here is the ONLY thing that surfaces a new release — see docs/MAC_MINI.md.",
+      "description": "The Mac mini's runtime version pins. They are shell-style assignments in host/mac-mini/versions.env, not image tags in a compose file, so Renovate needs to be told where to look. GENERALISED from OLLAMA_VERSION to any <NAME>_VERSION when oMLX was added, rather than adding a second near-identical manager: one regex to keep working is better than two that can drift apart. The `# renovate:` comment above each pin is still load-bearing — it carries the datasource and package name — so don't reformat that file without re-checking this matches. NO versioningTemplate here on purpose: the two pins need different schemes (ollama/ollama is semver, jundot/omlx ships pep440 'rc' tags as its current release), so each is set in its own packageRule rather than having one template silently impose semver on both.",
       "customType": "regex",
       "managerFilePatterns": ["/^host/mac-mini/versions\\.env$/"],
-      "matchStrings": ["# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s+OLLAMA_VERSION=(?<currentValue>\\S+)"],
-      "versioningTemplate": "semver"
+      "matchStrings": ["# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s+[A-Z][A-Z0-9_]*_VERSION=(?<currentValue>\\S+)"]
     }
   ],
   "packageRules": [
@@ -45,6 +44,24 @@
       "matchPackageNames": ["ollama/ollama"],
       "labels": ["dependencies", "mac-mini"],
       "prPriority": 10,
+      "versioning": "semver",
+      "extractVersion": "^v(?<version>.*)$"
+    },
+    {
+      "description": [
+        "oMLX on the Mac mini — the MLX inference server that now holds the primary model. Applying a bump replaces an application bundle on the host that serves the household's chat, so it is never automatic: `host/mac-mini/install.sh --install-omlx` is the act, and the reconcile reports the skew meanwhile. Same low stakes as Ollama beside it (HARDWARE_FAILURE.md: AI chat only, nothing else depends on it).",
+        "AN 'rc' TAG IS THIS PROJECT'S CURRENT RELEASE. Measured 2026-10-16: GitHub's releases/latest returns v0.7.1rc1 with prerelease=false and draft=false, and the project's homepage download button points at releases/latest. So rc builds are the release train, not something to filter out.",
+        "THIS RULE PREVIOUSLY GOT THAT BACKWARDS, and the failure would have been silent. It used `versioning: semver` plus ignoreUnstable to exclude 'unstable' tags, on the reading that prerelease=false on an rc tag was upstream mislabelling. But '0.7.1rc1' is not valid semver, so Renovate could not parse it and skipped it — which does not mean 'wait for a stable release', it means this dependency goes quiet and host/mac-mini/versions.env sits on an old pin while every check reports green. That is the same shape as the four months this repo spent not hearing about Ollama, arrived at from the opposite direction.",
+        "pep440 understands '0.7.1rc1' as a prerelease of 0.7.1, so the pin can track the release train. ignoreUnstable is therefore OFF — with it on, pep440 would correctly identify rc tags as prereleases and skip exactly the releases we want. allowedVersions excludes .dev builds instead, which are genuine between-release snapshots (v0.7.1.dev1 and .dev2 both also report prerelease=false, so the GitHub flag cannot make this distinction either).",
+        "minimumReleaseAge 7 days rather than the repo-wide 3. This project ships frequently and a regression lands on the one service members notice immediately; a week of other people's bug reports is cheap insurance. It also keeps a fast-moving dependency from eating slots in a PR cap this repo has already been starved by once."
+      ],
+      "matchPackageNames": ["jundot/omlx"],
+      "labels": ["dependencies", "mac-mini"],
+      "prPriority": 10,
+      "versioning": "pep440",
+      "ignoreUnstable": false,
+      "allowedVersions": "!/\\.dev/",
+      "minimumReleaseAge": "7 days",
       "extractVersion": "^v(?<version>.*)$"
     },
     {

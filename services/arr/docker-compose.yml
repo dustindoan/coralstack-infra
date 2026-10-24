@@ -155,7 +155,7 @@ services:
   # admin-plane tunnels. Save path (set in UI): /data/downloads. Sonarr/Radarr
   # reach it at localhost:8090.
   qbittorrent:
-    image: linuxserver/qbittorrent:5.2.4
+    image: linuxserver/qbittorrent:5.3.0
     container_name: qbittorrent
     restart: unless-stopped
     network_mode: "service:arr-vpn"

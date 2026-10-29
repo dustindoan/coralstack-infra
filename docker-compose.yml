@@ -66,6 +66,12 @@ services:
       BASE_DOMAIN: ${BASE_DOMAIN}
       ACME_EMAIL: ${ACME_EMAIL}
       CF_API_TOKEN: ${CF_API_TOKEN}
+      # The SNI router allowed to send PROXY protocol headers (see the
+      # Caddyfile's global options). The default trusts loopback only, which
+      # nothing connects from: unset means off. An empty list also trusts
+      # nobody on Caddy 2.11.7 (tested 2026-10-26); the explicit default keeps
+      # it that way without depending on how a later Caddy reads an empty one.
+      PROXY_PROTOCOL_FROM: ${PROXY_PROTOCOL_FROM:-127.0.0.1/32}
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - ${DATA_PATH:?DATA_PATH must be set in .env — run ./setup.sh which resolves it to an absolute path}/caddy/data:/data

@@ -30,18 +30,29 @@
 	}
 }
 
-# Shared TLS config: Let's Encrypt via Cloudflare DNS-01. Using Cloudflare's
-# own resolvers (1.1.1.1, 1.0.0.1) for the propagation check — the default
-# resolvers (whatever the container's /etc/resolv.conf points at) can be
-# slow to see freshly-created TXT records, causing the ACME challenge to
-# time out even though the record was successfully published. A longer
-# propagation_timeout is belt-and-suspenders for the same problem.
+# Shared TLS config: Let's Encrypt via Cloudflare DNS-01.
+#
+# There is deliberately no `resolvers` line. Without one, Caddy checks the
+# challenge record at Cloudflare's own nameservers, which never cache. With
+# one (this file used 1.1.1.1 until 2026-10-30), Caddy asks only that
+# recursive resolver. If it asks before Cloudflare has published the record,
+# the resolver caches "no such record" for up to 30 minutes (the zone's SOA
+# minimum), and every later check in that attempt fails.
+#
+# Cloudflare can also take minutes to serve a new record, so the wait is 20
+# minutes rather than Caddy's default of 2. Seen on 2026-10-30, with the same
+# plugin on another zone (Atoll's boxfront):
+# - Attempts timed out with the default 2-minute wait.
+# - An attempt with `resolvers 1.1.1.1` and 5 minutes timed out too.
+# - With no `resolvers` line and 20 minutes, the next attempt succeeded about
+#   a minute after the record was created.
+# Both changes went in together, so that night alone doesn't separate them.
+# The negative-caching mechanism is why the resolver line goes regardless.
 (tls_cloudflare) {
 	tls {
 		dns cloudflare {env.CF_API_TOKEN}
-		resolvers 1.1.1.1 1.0.0.1
 		propagation_delay 30s
-		propagation_timeout 5m
+		propagation_timeout 20m
 	}
 }
 

@@ -28,6 +28,7 @@ lands) · [RECOVERY.md](RECOVERY.md) (power loss) · [BACKUPS.md](BACKUPS.md).
 | **SMART (Proxmox host)** | `services/smart/host/`, systemd timer | The NUC's internal SATA SSD — Proxmox + both VMs' disks | Same, via the public `status.` URL |
 | **Deploy drift** | `services/drift/` container | That the box's checkout matches the repo — right branch, nothing uncommitted, nothing unpushed | Pushes up/down **with the reason** to a Kuma Push monitor |
 | **Ollama reconcile (Mac mini)** | `host/mac-mini/`, launchd timer | That the inference host matches the repo — version pin, declared models, the LaunchAgent env | Same, via the public `status.` URL |
+| **Front door** | `services/autokuma/monitors/front-door.toml.template`, only when `PROXY_PROTOCOL_FROM` is set | That the shared SNI router in front of this box (Atoll's switchboard here) accepts TCP 443 | A Kuma TCP monitor |
 | **AutoKuma** | `services/autokuma/` | Nothing — it *declares* the monitor set, reconciling Kuma against `.toml` files in this repo | n/a |
 
 Two SMART runners is not redundancy, it's coverage: **the apps VM physically
@@ -570,6 +571,15 @@ up believing you have coverage you don't.
   internally the whole time (measured 2026-09-04, above). Step 4 is not a
   nice-to-have on top of existing edge coverage — it is the *only* edge
   coverage, and it does not exist yet.
+- **A shared front door is one more link in that path.** Since 2026-10-30 this
+  household's 443 reaches Coral through Atoll's switchboard
+  ([NETWORK_TOPOLOGY.md](NETWORK_TOPOLOGY.md)). When `PROXY_PROTOCOL_FROM` is
+  a single address, `setup.sh` renders a **Front door** monitor, a TCP probe
+  of that address's 443 that leaves the box. It catches a dead front door from
+  inside, but only partly: it can't see the eero's forward, OPNsense's
+  `reply-to`, or Coral's HTTP/3, and it dies with the NUC. A step-4 check on
+  `status.${BASE_DOMAIN}` now covers the eero, the front door and OPNsense on
+  the way to Caddy.
 - **Kuma cannot alert you that Kuma is down** — until you do step 4 above.
   It runs on the apps VM, on the NUC; if the NUC dies, the monitoring dies with
   it and you find out from a family member, not a notification. Everything else

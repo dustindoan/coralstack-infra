@@ -395,6 +395,12 @@ if [[ -f services/autokuma/.env ]]; then
 	# ente/museum.yaml which carries runtime state and is rendered once.
 	autokuma_out="$DATA_PATH/autokuma/monitors"
 	mkdir -p "$autokuma_out" "$DATA_PATH/autokuma/data"
+	# The shared front door's address, from PROXY_PROTOCOL_FROM. Only a single
+	# address can be probed, so a range or an unset value renders no monitor.
+	FRONT_DOOR_HOST="${PROXY_PROTOCOL_FROM:-}"
+	FRONT_DOOR_HOST="${FRONT_DOOR_HOST%/32}"
+	[[ "$FRONT_DOOR_HOST" =~ ^[0-9]+(\.[0-9]+){3}$ ]] || FRONT_DOOR_HOST=""
+	export FRONT_DOOR_HOST
 	rendered=0
 	for f in services/autokuma/monitors/*.toml; do
 		[[ -e "$f" ]] || continue
@@ -404,7 +410,13 @@ if [[ -f services/autokuma/.env ]]; then
 	for f in services/autokuma/monitors/*.toml.template; do
 		[[ -e "$f" ]] || continue
 		out="$autokuma_out/$(basename "$f" .template)"
-		envsubst '$BASE_DOMAIN $BACKUP_PUSH_TOKEN $SMART_APPS_PUSH_TOKEN $SMART_HOST_PUSH_TOKEN $DRIFT_PUSH_TOKEN $OLLAMA_MINI_PUSH_TOKEN $NTFY_TOPIC' \
+		if [[ "$(basename "$f")" == front-door.toml.template && -z "$FRONT_DOOR_HOST" ]]; then
+			# No front door now. A copy left from when there was one would keep
+			# probing an address nothing serves: say so rather than delete it.
+			[[ -f "$out" ]] && warn "Stale monitor definition: $out, but PROXY_PROTOCOL_FROM is no longer a single address. Delete it AND the monitor in Kuma's UI if the front door is gone."
+			continue
+		fi
+		envsubst '$BASE_DOMAIN $BACKUP_PUSH_TOKEN $SMART_APPS_PUSH_TOKEN $SMART_HOST_PUSH_TOKEN $DRIFT_PUSH_TOKEN $OLLAMA_MINI_PUSH_TOKEN $NTFY_TOPIC $FRONT_DOOR_HOST' \
 			< "$f" > "$out"
 		rendered=$((rendered + 1))
 	done

@@ -1,0 +1,20 @@
+# The shared front door: the SNI router in front of this box, if there is one
+# (PROXY_PROTOCOL_FROM in the root .env; docs/NETWORK_TOPOLOGY.md, "Sharing 443
+# with other boxes"). setup.sh renders this only when PROXY_PROTOCOL_FROM is a
+# single address; a box whose port-forward points straight at it gets no
+# monitor.
+#
+# Every visitor reaches Coral through the front door. When it's down, Coral is
+# unreachable from outside, but every other monitor here stays green, because
+# they all probe over the docker network. This one leaves the box: Kuma →
+# OPNsense → the front door's TCP 443. It proves the front door accepts
+# connections, not that it routes them to Coral. MONITORING.md §4, the external
+# check, is what tests the whole public path.
+type = "port"
+# The id from ntfy.toml.template's FILENAME, not its display name.
+notification_name_list = ["ntfy"]
+name = "Front door (shared 443)"
+hostname = "${FRONT_DOOR_HOST}"
+port = 443
+interval = 60
+max_retries = 2

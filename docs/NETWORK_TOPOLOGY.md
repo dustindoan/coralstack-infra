@@ -158,7 +158,7 @@ is more impactful than a bugfix window.
 ## Sharing 443 with other boxes: Atoll
 
 *Decided 2026-10-26 as "the switchboard", reframed 2026-10-29 as part of
-Atoll. Designed and tested locally; not yet deployed.*
+Atoll. Live since 2026-10-30: the eero sends 443 to Atoll at `192.168.4.40`.*
 
 This household serves more than one box's domains from its single public IPv4:
 a second machine, running a separate project on its own domain and not part of
@@ -206,13 +206,30 @@ without breaking connection migration and visitor addresses. The options
 weighed, including routing UDP 443 to every box, are in the `switchboard`
 README and Atoll's QUIC routing note.
 
-**What changes for Coral: one Caddy setting and one OPNsense option.**
+**What changes for Coral: one Caddy setting, and `reply-to` in OPNsense.**
 
-*The OPNsense option, for UDP:* the eero accepts replies only from the address
-it forwarded to, which is now Atoll's. Left alone, OPNsense would reply to
-HTTP/3 visitors straight through the eero, and those replies would be dropped.
-So the WAN rule for 443 sends its replies back through Atoll (`reply-to`, a
-standard OPNsense rule option, set to a gateway pointing at Atoll's address).
+*`reply-to`, for UDP:* the eero accepts replies only from the address it
+forwarded to, which is now Atoll's. Left alone, OPNsense would reply to HTTP/3
+visitors straight through the eero, and those replies would be dropped. So
+OPNsense sends its 443 replies back through Atoll. In OPNsense 26.x that takes
+three settings, all live since 2026-10-30:
+
+1. **A gateway for Atoll.** *System → Gateways → Configuration*: `ATOLL`, on
+   WAN, `192.168.4.40`. Not an upstream gateway, and with monitoring off.
+2. **A WAN rule that carries `reply-to`.** The forward in *Firewall → NAT →
+   Destination NAT* ("Caddy HTTPS": WAN, TCP/UDP, HTTPS → `10.0.0.10:443`) has
+   its Firewall rule set to **Manual**. With **Pass**, the forward admits
+   traffic without consulting any WAN rule, so there is nowhere to put
+   `reply-to`. The WAN rule "Caddy HTTPS (replies via Atoll)" passes TCP/UDP
+   from any source to `10.0.0.10:443`, with *reply-to* `ATOLL` under its
+   advanced options. Its *Gateway* field stays empty: that field reroutes the
+   incoming traffic.
+3. **Shared forwarding off.** *Firewall → Settings → Advanced*. It is on by
+   default, and with it on, OPNsense applied `reply-to` only to replies
+   addressed to the house LAN. Replies to internet visitors followed the
+   default route to the eero and were dropped, so HTTP/3 from outside failed
+   while every test from the LAN passed. This was measured on 2026-10-30,
+   and turning the setting off fixed it.
 
 *The Caddy setting, for TCP:* an SNI router opens its own
 connection to each box, so without help every service would take the router
@@ -262,24 +279,39 @@ eero, the preflight. Coral's part:
    `docker logs --since 2m synapse | grep client/versions`. The line must show
    that LAN host's address, not Atoll's.
 4. **Prove HTTP/3's return path on a spare port.** Atoll's preflight runs a
-   QUIC handshake through Atoll to a temporary OPNsense forward (UDP 9443 →
-   the Apps VM's 443) that has `reply-to` Atoll. It must complete. The live
-   443 rule is untouched.
-5. **The cutover, in one sitting:** set `reply-to` Atoll on the 443 WAN rule,
-   then the eero's 443 forward (TCP and UDP) moves from OPNsense to Atoll.
+   QUIC handshake through Atoll to a temporary OPNsense forward (a spare lab
+   port such as UDP 8463 → the Apps VM's 443) that has `reply-to` Atoll. It must complete. The live
+   443 rule is untouched. **The test's source address must be off the house
+   LAN.** A handshake from a LAN address passed on 2026-10-30 while Shared
+   forwarding was still on, and the real path then failed. So run it from a
+   LAN host to the household's *public* address: the eero's hairpin presents
+   the public address as the source, which is off the LAN, like any visitor.
+5. **The cutover, in one sitting:** the three OPNsense settings above, then the
+   eero's 443 forward (TCP and UDP) moves from OPNsense to Atoll.
 6. **After the cutover:**
    - From a phone on cellular, Pocket ID, Jellyfin and Element load. From the
      house, the same pages load through the hairpin.
    - HTTP/3 passes the verification bar below, with Caddy logging visitors'
      addresses, not Atoll's.
 
-**Rollback.** The eero moves the traffic. Point its 443 forward (TCP and UDP)
-back at OPNsense, then remove `reply-to` from the 443 WAN rule, and Coral is
-on exactly today's path. `PROXY_PROTOCOL_FROM` can stay, since it does nothing
-without traffic from that address, or go with one `.env` line and a Caddy
-recreate. If it were ever lost while Atoll is live, nothing breaks: the header
-is then ignored like any other source's, and services see Atoll's address
-instead of visitors'.
+   Checked on 2026-10-30: every Coral hostname answered through the public
+   address, both over HTTP/2 and over HTTP/3. An outside HTTP/3 checker
+   (http3check.net) completed QUIC on every attempt, and Pocket ID logged the
+   checker's own address.
+
+**Rollback**, two steps, in this order:
+1. **The eero:** point its 443 forward (TCP and UDP) back at OPNsense.
+2. **OPNsense:** set "Caddy HTTPS" back to **Pass**, then Apply. That bypasses
+   the WAN rule and its `reply-to`.
+
+Step 2 is not optional. A rollback is most likely needed because Atoll is
+down, and `reply-to` would keep sending Coral's replies to it. The `ATOLL`
+gateway, the now-unused WAN rule and Shared forwarding can stay as they are.
+`PROXY_PROTOCOL_FROM` can stay, since it
+does nothing without traffic from that address, or go with one `.env` line and
+a Caddy recreate. If it were ever lost while Atoll is live, nothing breaks: the
+header is then ignored like any other source's, and services see Atoll's
+address instead of visitors'.
 
 ## h3 verification bar
 

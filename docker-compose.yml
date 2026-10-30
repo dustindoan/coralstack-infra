@@ -73,7 +73,13 @@ services:
       # it that way without depending on how a later Caddy reads an empty one.
       PROXY_PROTOCOL_FROM: ${PROXY_PROTOCOL_FROM:-127.0.0.1/32}
     volumes:
-      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # The directory, not the single file. git pull replaces the Caddyfile
+      # with a new file, and a single-file bind mount keeps showing the old
+      # one until the container is recreated, so an edit never reached the
+      # running Caddy. Through a directory mount the new file is visible at
+      # once, and setup.sh applies it with a graceful `caddy reload`. The
+      # directory's Dockerfile shows up in /etc/caddy too; Caddy ignores it.
+      - ./caddy:/etc/caddy:ro
       - ${DATA_PATH:?DATA_PATH must be set in .env — run ./setup.sh which resolves it to an absolute path}/caddy/data:/data
       - ${DATA_PATH:?DATA_PATH must be set in .env — run ./setup.sh which resolves it to an absolute path}/caddy/config:/config
     # Register every coralstack subdomain as a docker network alias on Caddy

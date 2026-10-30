@@ -766,6 +766,22 @@ if [[ -n "$caddy_id_before" && -n "$caddy_id_after" && "$caddy_id_before" != "$c
 	fi
 fi
 
+# Apply a changed Caddyfile. `up -d` only recreates Caddy when its image or
+# settings change. An edited Caddyfile is already visible inside the container
+# (docker-compose.yml mounts the directory), but Caddy reads it only when told
+# to. `caddy reload` keeps connections open and does nothing when the config
+# is unchanged. A recreated Caddy has just read the file, so it is skipped.
+# On an invalid file Caddy keeps serving the previous config, and the reload
+# fails: say so loudly, because otherwise the edit silently never happens.
+if [[ -n "$caddy_id_after" && "$caddy_id_before" == "$caddy_id_after" ]]; then
+	if reload_out="$(docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile 2>&1)"; then
+		log "Caddyfile applied (graceful reload; a no-op when unchanged)"
+	else
+		warn "Caddy did NOT take caddy/Caddyfile. It is still serving the previous config:"
+		printf '%s\n' "$reload_out" | tail -5 >&2
+	fi
+fi
+
 log "Stack is up. Check status with: docker compose ps"
 echo
 cat <<EOF

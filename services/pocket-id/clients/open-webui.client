@@ -1,6 +1,6 @@
 # Open WebUI — AI chat, member-facing. Talks to Ollama on the Mac mini.
 CLIENT_ID=e211556f-0348-4421-94a9-1870be0f48e2
-CLIENT_NAME=Open WebUI
+CLIENT_NAME="Open WebUI"
 CALLBACK_URLS=https://ai.${BASE_DOMAIN}/oauth/oidc/callback
 PKCE=false
 # Measured 2026-10-15: this is what the client already allowed.

@@ -4,6 +4,14 @@ One file per client. `setup.sh` reconciles these against Pocket ID's REST API on
 every run: create what is missing, wire the credentials into the consuming
 service's `.env`, and leave anything already wired alone.
 
+**Each file is sourced by bash, so quote any value with a space in it:**
+`CLIENT_NAME="Open WebUI"`. Unquoted, bash runs the second word as a command,
+and the variable never gets set. `setup.sh` prints a `command not found` line
+and carries on. Until 2026-10-30 `open-webui.client` was unquoted, so its
+`CLIENT_NAME` was empty. That was harmless only because the name is sent
+solely when a client is created or its callbacks are corrected: either one
+would have renamed the client in Pocket ID.
+
 ## Why this is a shell function and not a container
 
 The AutoKuma comparison is tempting and wrong. Kuma's write path is socket.io

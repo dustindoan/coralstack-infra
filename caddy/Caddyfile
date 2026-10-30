@@ -6,6 +6,28 @@
 	# on the admin's Mac — the evidence was tainted, and the admin's phone
 	# streamed *better* with h3 on. See docs/NETWORK_TOPOLOGY.md for the
 	# clean-instrument verification protocol before touching this again.
+
+	# Visitors' real addresses through a shared front door. When this box's
+	# TCP 443 is reached through an SNI router (several boxes behind one
+	# public 443 — docs/NETWORK_TOPOLOGY.md), every connection arrives FROM
+	# the router, and every service would take the router for the visitor:
+	# per-IP limits such as Matrix login rate limiting would pool everyone into
+	# one bucket. The router prefixes each connection with a PROXY protocol
+	# header carrying the real address, and this believes that header from
+	# PROXY_PROTOCOL_FROM only. Every other source — Coral's own containers
+	# calling Caddy over the Docker network, the eero's port-forward, LAN
+	# clients — connects exactly as before, and a header one of them sends is
+	# ignored, not believed. Unset, only loopback is trusted: inert.
+	# HTTP/3 never passes through here; QUIC has no listener wrappers.
+	servers :443 {
+		listener_wrappers {
+			proxy_protocol {
+				allow {$PROXY_PROTOCOL_FROM}
+			}
+			# Must follow proxy_protocol: the header precedes the TLS hello.
+			tls
+		}
+	}
 }
 
 # Shared TLS config: Let's Encrypt via Cloudflare DNS-01. Using Cloudflare's

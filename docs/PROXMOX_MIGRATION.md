@@ -16,7 +16,7 @@ Internet
 ISP modem (Hitron FC777, bridge mode, single public IP)
    │
    ▼
-eero (NAT, DHCP, primary home router, 192.168.4.0/24)
+eero (NAT, DHCP, primary home router, 192.168.4.0/22)
    │            │
    │            ├─► family devices, WiFi
    │            │
@@ -116,7 +116,7 @@ expensive to recreate. Everything else gets wiped when Proxmox installs.
 
 4. **Network config during install:**
    - Management interface: the built-in NIC (`enp0s31f6` typical on NUC7)
-   - **Static IP on home LAN:** `192.168.4.10/24` (or whatever is outside your eero DHCP range)
+   - **Static IP on home LAN:** `192.168.4.10/22` (or whatever is outside your eero DHCP range). **The prefix is `/22`, not `/24`** — the eero runs `192.168.4.0/22` (`.4.0`–`.7.255`), so a `/24` here silently strands every client the eero places in `192.168.5–7.x`. Confirm against a laptop on the LAN first (`ifconfig` → `netmask 0xfffffc00` = `/22`).
    - Gateway: `192.168.4.1` (eero)
    - DNS: `192.168.4.1` or `1.1.1.1`
    - Hostname: `coralstack-nuc` or similar
@@ -164,7 +164,7 @@ EOF
 8. **Configure network bridges.**
 
    Web UI → node → **Network** tab:
-   - **Create → Linux Bridge** for `vmbr0`: address `192.168.4.10/24`, gateway `192.168.4.1`, bridge port `enp0s31f6`, check **VLAN aware**
+   - **Create → Linux Bridge** for `vmbr0`: address `192.168.4.10/22`, gateway `192.168.4.1`, bridge port `enp0s31f6`, check **VLAN aware**
    - **Create → Linux Bridge** for `vmbr1`: address `10.0.0.2/24`, no gateway, no bridge port (internal-only). The `10.0.0.2` is the Proxmox host's management presence on the OPNsense LAN — needed for SSH-tunnelling into the OPNsense web GUI from anywhere outside the DMZ. Without it, you have no path into OPNsense once VMs are running.
    - **Apply Configuration**
 
@@ -174,7 +174,7 @@ EOF
    ```
    auto vmbr0
    iface vmbr0 inet static
-       address 192.168.4.10/24
+       address 192.168.4.10/22
        gateway 192.168.4.1
        bridge-ports enp0s31f6
        bridge-stp off
@@ -257,7 +257,7 @@ OR (cleaner): plug a laptop into a Proxmox host port and bridge it onto vmbr1 to
 
 Once in the web GUI:
 
-1. **Interfaces → WAN:** set static IPv4 `192.168.4.20/24`, gateway `192.168.4.1` (eero). Uncheck "Block private networks" and "Block bogon networks" (WAN is on a private network).
+1. **Interfaces → WAN:** leave WAN on **DHCP** and let the eero reservation from Phase 2 pin it to `192.168.4.20` — that is what the live deployment runs, and it inherits the eero's `/22` automatically. If you do set it static, the prefix is `192.168.4.20/22`, not `/24` (same reason as Phase 1 step 4). Either way, set gateway `192.168.4.1` (eero) and uncheck "Block private networks" and "Block bogon networks" (WAN is on a private network).
 2. **Interfaces → LAN:** confirm `10.0.0.1/24`.
 3. **Disable dnsmasq's DHCP first.** OPNsense 26.x ships with dnsmasq enabled by default; it grabs port 67 and Kea silently fails to bind with `DHCPSRV_OPEN_SOCKET_FAIL ... Address already in use`. Go to **Services → Dnsmasq DNS & DHCP → General**, uncheck **Enable**, Save → Apply. (Unbound is the default DNS resolver — disabling dnsmasq doesn't break DNS.) Verify nothing else is squatting on port 67: from the OPNsense shell, `sockstat -4 -l | grep :67` should return empty after this change.
 
@@ -279,7 +279,7 @@ Once in the web GUI:
 6. **System → Settings → Administration:** optionally change root password, disable default password.
 7. **Services → Dynamic DNS:** add Cloudflare DDNS for the home public IP. Use existing Cloudflare API token (scoped `Zone:DNS:Edit` on the coralstack zone).
 
-**Naming pitfall:** OPNsense's "LAN" in this topology is your internal DMZ network (`10.0.0.0/24`). OPNsense's "WAN" is actually your home LAN (`192.168.4.0/24`). Default docs assume LAN=home; adjust mentally.
+**Naming pitfall:** OPNsense's "LAN" in this topology is your internal DMZ network (`10.0.0.0/24`). OPNsense's "WAN" is actually your home LAN (`192.168.4.0/22`). Default docs assume LAN=home; adjust mentally.
 
 **Checkpoint:** OPNsense running, reachable on both interfaces, port-forward rule staged (target VM doesn't exist yet).
 

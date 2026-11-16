@@ -10,7 +10,7 @@ reframed 2026-10-29 as Atoll, the household's platform (below).*
 
 ```
 Internet ── Hitron FC777 (bridge) ── eero (public IP, NAT #1)
-                                       │  192.168.4.0/24 (house LAN)
+                                       │  192.168.4.0/22 (house LAN)
                                        ├─ family devices, Samsung TV, phones
                                        └─ Proxmox NUC (.10)
                                             └─ OPNsense VM (WAN .20, NAT #2)
@@ -89,6 +89,45 @@ looks like a Caddy bug and is not one.
    device. SSH aliases sidestep both problems — alias resolution is local to
    the MacBook, and ProxyJump traffic is port 22, which the eero passes
    normally.
+
+4. **The eero LAN is a `/22`, and a `/24` on any box inside it fails
+   asymmetrically** (2026-11-16). The eero runs `192.168.4.0/22` and places
+   clients anywhere in `.4.0`-`.7.255`. The Proxmox NUC was configured
+   `192.168.4.10/24` by hand on 2026-05-08, from this repo's own migration
+   guide, which also said `/24`. So a client the eero puts in `.4.x` reaches
+   the NUC normally, while one in `.5-.7.x` ARPs it on-link (its own `/22`
+   says it is), the NUC judges the reply off-segment and hands it to the
+   eero, and the eero relays it only sometimes.
+   - **The symptom is not a clean outage.** One SSH connects and the next
+     five time out; one ping burst is 0% loss and the next is 100%. That
+     reads like WiFi or DNS. It is neither, and the intermittency is what
+     makes it expensive - it invites you to blame the flakiest thing in
+     sight.
+   - **It is invisible from the failing end.** The client's routing table
+     shows an ordinary on-link neighbour entry, because by its own prefix
+     that is correct. The prefix that matters is on the *far* box.
+   - **The test is one command** on any machine on the house LAN: `ifconfig`,
+     then read the netmask. `0xfffffc00` is `/22`, `0xffffff00` is `/24`.
+     Compare it against what the far box carries.
+   - **Fixed on the NUC** with `address 192.168.4.10/22` + `ifreload -a`,
+     which hot-applies without dropping the bridge or disturbing the VMs on
+     it. The guide's six `/24`s were corrected in the same change.
+   - **OPNsense was never affected** (verified 2026-11-16): its WAN is
+     `192.168.4.20/22` via **DHCP4**, not static, so it picked the right
+     prefix up from the eero by itself. Note this contradicts the migration
+     guide, which tells you to set WAN static - the live box takes the eero
+     reservation from Phase 2 instead.
+   - **Reading a VM console with no serial port and no guest agent:** from
+     the Proxmox host, `echo "screendump /tmp/x.ppm" | qm monitor <vmid>`
+     captures the framebuffer. That is how the WAN prefix above was read
+     without logging in to OPNsense at all.
+   - **For repairs:** the ProxyJump remark just above assumes the jump host
+     is reachable. When the *NUC* is the unreachable box, jump through a peer
+     inside `.4.0/24` instead - Atoll at `.4.40` - authenticating with your
+     own key so none is left behind on it:
+     `ssh -o ProxyCommand="ssh -o ProxyCommand=none -W %h:%p atoll" root@192.168.4.10`
+     Atoll is a guest on the NUC, so that works only while the NUC is up and
+     merely unreachable. A dead NUC means physical access.
 
 ## Target ("product") topology: box as LAN peer
 

@@ -13,6 +13,30 @@ services:
     volumes:
       - ${DATA_PATH:?DATA_PATH must be set — run ./setup.sh}/open-webui:/app/backend/data
     environment:
+      # ⚠️  MOST OF THIS BLOCK ONLY APPLIES ON A FIRST RUN. ⚠️
+      #
+      # OPENAI_API_BASE_URL, OPENAI_API_KEY and ENABLE_OLLAMA_API are Open
+      # WebUI "PersistentConfig" values: the environment SEEDS them the first
+      # time the container starts with an empty database, and from then on the
+      # database owns them and the environment is ignored.
+      #
+      # This cost a deploy on 2026-10-19. The compose file said
+      # OPENAI_API_BASE_URL=http://10.0.1.10:8000/v1 while the database still
+      # held ["https://api.openai.com/v1"] from this instance's first run, and
+      # ollama.enable was still true. Everything looked correctly configured
+      # and the model picker was empty, because Open WebUI was asking
+      # api.openai.com and a stopped Ollama.
+      #
+      # SO: CHANGING A VALUE HERE DOES NOT CHANGE A RUNNING INSTANCE. Set it in
+      # Admin Settings → Connections, or write the config table in
+      # /app/backend/data/webui.db directly. These lines remain correct as the
+      # declared intent and as the seed for a rebuilt instance.
+      #
+      # ENABLE_PERSISTENT_CONFIG=false would make the environment authoritative
+      # again — rejected here because this instance has 373 persisted config
+      # keys and that would put every one of them under environment control,
+      # silently reverting anything ever set in the admin UI.
+      #
       # ─── Inference: oMLX on the Mac mini ──────────────────────────────────
       # The mini serves the primary model through oMLX, not Ollama, because
       # Ollama's MLX runner keeps ONE prompt-prefix cache and two long-lived
@@ -28,14 +52,17 @@ services:
       OPENAI_API_BASE_URL: http://${MAC_MINI_IP:?MAC_MINI_IP must be set in .env — see docs/PROXMOX_MIGRATION.md Phase 4c}:8000/v1
       OPENAI_API_KEY: ${OMLX_API_KEY:?OMLX_API_KEY must be set in services/open-webui/.env — generated on the mini by host/mac-mini/install.sh}
 
-      # Ollama stays configured but DISABLED, which is the rollback. 48 GB
-      # cannot hold both runtimes' weights and caches, so leaving the API on
-      # would put five models in the household's picker where selecting the
-      # wrong one squeezes the box. Rollback is: flip this to "true", set
-      # MINI_PRIMARY_RUNTIME=ollama in host/mac-mini/versions.env, re-run
-      # install.sh on the mini, redeploy here.
+      # Ollama disabled. 48 GB cannot hold both runtimes, so leaving the API
+      # on would put five models in the household's picker where choosing the
+      # wrong one squeezes the box.
+      #
+      # OLLAMA_BASE_URL IS DELIBERATELY ABSENT. Leaving it set made Open WebUI
+      # keep polling the stopped Ollama — "Cannot connect to host
+      # 10.0.1.10:11434" on a loop — which spams the log and makes the model
+      # list wait on a dead connection. Rollback does not need it: the URL is
+      # still in Open WebUI's own database as ollama.base_urls, so re-enabling
+      # is a database change, not a redeploy (see the warning below).
       ENABLE_OLLAMA_API: "false"
-      OLLAMA_BASE_URL: http://${MAC_MINI_IP}:11434
 
       # Open WebUI fires its own inference for chat titles and tags. Each one
       # is a fresh cold prefill on a 27B model, competing for the same GPU as

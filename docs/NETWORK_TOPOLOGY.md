@@ -112,9 +112,15 @@ looks like a Caddy bug and is not one.
    - **Fixed on the NUC** with `address 192.168.4.10/22` + `ifreload -a`,
      which hot-applies without dropping the bridge or disturbing the VMs on
      it. The guide's six `/24`s were corrected in the same change.
-   - **Still unverified:** the OPNsense VM's WAN prefix on `192.168.4.20`.
-     Same latent bug, low impact now that 443 goes to Atoll and the eero
-     already drops WiFi unicast to that MAC (consequence #3 above).
+   - **OPNsense was never affected** (verified 2026-11-16): its WAN is
+     `192.168.4.20/22` via **DHCP4**, not static, so it picked the right
+     prefix up from the eero by itself. Note this contradicts the migration
+     guide, which tells you to set WAN static - the live box takes the eero
+     reservation from Phase 2 instead.
+   - **Reading a VM console with no serial port and no guest agent:** from
+     the Proxmox host, `echo "screendump /tmp/x.ppm" | qm monitor <vmid>`
+     captures the framebuffer. That is how the WAN prefix above was read
+     without logging in to OPNsense at all.
    - **For repairs:** the ProxyJump remark just above assumes the jump host
      is reachable. When the *NUC* is the unreachable box, jump through a peer
      inside `.4.0/24` instead - Atoll at `.4.40` - authenticating with your

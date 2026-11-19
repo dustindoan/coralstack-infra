@@ -114,7 +114,7 @@ services:
   # Root folder (set in the UI): /data/movies — the library Jellyfin mounts
   # read-only at /media/movies.
   radarr:
-    image: linuxserver/radarr:6.4.4
+    image: linuxserver/radarr:7.0.3
     container_name: radarr
     restart: unless-stopped
     network_mode: "service:arr-vpn"
